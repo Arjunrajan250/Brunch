@@ -223,3 +223,4 @@ export function SearchView({ query, filter }: { query: string; filter: string })
     </div>
   );
 }
+

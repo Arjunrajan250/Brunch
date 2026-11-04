@@ -114,3 +114,4 @@ export function ChartsView({ tab }: { tab: MainTab }) {
     </div>
   );
 }
+

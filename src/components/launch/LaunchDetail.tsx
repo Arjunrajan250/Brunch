@@ -520,3 +520,4 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
     </div>
   );
 }
+

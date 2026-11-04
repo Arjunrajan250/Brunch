@@ -123,3 +123,4 @@ export function BrunchLogo({ size = 32, className = '' }: { size?: number; class
     </svg>
   );
 }
+

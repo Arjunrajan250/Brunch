@@ -151,3 +151,4 @@ export function CategoriesView({ tab }: { tab: MainTab }) {
     </div>
   );
 }
+

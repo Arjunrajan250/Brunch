@@ -174,3 +174,4 @@ export function Carousel({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
