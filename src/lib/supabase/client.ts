@@ -32,3 +32,4 @@ export function getSupabaseBrowserClient() {
   browserClient = createBrowserClient<Database>(url, key);
   return browserClient;
 }
+

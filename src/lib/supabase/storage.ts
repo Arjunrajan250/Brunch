@@ -52,3 +52,4 @@ export async function uploadMedia(file: File, folder: 'icons' | 'shots'): Promis
     reader.readAsDataURL(file);
   });
 }
+
