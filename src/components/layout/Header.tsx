@@ -19,6 +19,9 @@ export function Header() {
     openSheet,
     allCommunities,
     allPosts,
+    user,
+    isBackendConnected,
+    openAuthModal,
   } = useBrunch();
 
   const [scrolled, setScrolled] = useState(false);
@@ -89,12 +92,34 @@ export function Header() {
               </button>
               <button
                 className="avatar av-in"
-                onClick={() => openSheet({ type: 'profile' })}
+                onClick={() => (user ? openSheet({ type: 'profile' }) : openAuthModal())}
                 aria-label="Your profile and settings"
               >
                 {initial}
               </button>
             </div>
+
+            <button
+              onClick={openAuthModal}
+              title={isBackendConnected ? 'Supabase Database Active' : 'Local Mode - Click to connect Supabase'}
+              className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                isBackendConnected
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isBackendConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>{isBackendConnected ? 'PostgreSQL' : 'Local DB'}</span>
+            </button>
+
+            {!user && (
+              <button
+                className="btn ghost sm text-xs font-semibold text-white/80 hover:text-white"
+                onClick={openAuthModal}
+              >
+                Sign in
+              </button>
+            )}
 
             <button
               className="btn fill sm launch-btn"
@@ -106,7 +131,7 @@ export function Header() {
 
             <button
               className="avatar av-out"
-              onClick={() => openSheet({ type: 'profile' })}
+              onClick={() => (user ? openSheet({ type: 'profile' }) : openAuthModal())}
               aria-label="Your profile and settings"
             >
               {initial}

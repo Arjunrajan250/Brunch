@@ -11,6 +11,7 @@ import {
   HUES,
   parseUrl,
 } from '@/data/seed';
+import { uploadMedia } from '@/lib/supabase/storage';
 import { LaunchRow } from '@/components/common/LaunchComponents';
 import { Glyph, Icon } from '@/components/icons/Icons';
 
@@ -53,22 +54,22 @@ export function LaunchForm({ editId }: { editId?: string }) {
     });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, kind: 'icon' | 'shots') => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'icon' | 'shots') => {
     const files = e.target.files;
     if (!files || !files.length) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const result = ev.target?.result as string;
+    for (const file of Array.from(files)) {
+      const res = await uploadMedia(file, kind === 'icon' ? 'icons' : 'shots');
+      if (res.url) {
         if (kind === 'icon') {
-          setIcon(result);
+          setIcon(res.url);
         } else {
-          setShots((prev) => (prev.length < 3 ? [...prev, result] : prev));
+          setShots((prev) => (prev.length < 3 ? [...prev, res.url!] : prev));
         }
-      };
-      reader.readAsDataURL(file);
-    });
+      } else if (res.error) {
+        toast(res.error);
+      }
+    }
     e.target.value = '';
   };
 

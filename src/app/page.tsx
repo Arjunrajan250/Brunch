@@ -7,6 +7,7 @@ import { Rail } from '@/components/layout/Rail';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { Toast } from '@/components/ui/Toast';
 import { BrunchSheets } from '@/components/modals/BrunchSheets';
+import { AuthModal } from '@/components/auth/AuthModal';
 
 import { FeedView } from '@/components/feed/FeedView';
 import { ChartsView } from '@/components/feed/ChartsView';
@@ -160,6 +161,7 @@ function AppContent() {
       </div>
       <BottomNav />
       <BrunchSheets />
+      <AuthModal />
       <Toast />
     </div>
   );

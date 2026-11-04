@@ -25,6 +25,11 @@ export function BrunchSheets() {
     deletePostItem,
     go,
     toast,
+    user,
+    userProfile,
+    isBackendConnected,
+    openAuthModal,
+    signOut,
   } = useBrunch();
 
   // Local states for editing profile
@@ -94,9 +99,17 @@ export function BrunchSheets() {
               <span className="avatar lg">{initial}</span>
               <div className="flex-1 min-w-0">
                 <b className="text-[17px]">{makerName || 'Your profile'}</b>
-                <span className="mt block text-[var(--fg-2)] text-[13px]">
-                  Preview mode. Everything is saved on this device only.
-                </span>
+                {user ? (
+                  <span className="mt block text-accent text-[12px] truncate">
+                    Signed in as {user.email}
+                  </span>
+                ) : (
+                  <span className="mt block text-[var(--fg-2)] text-[13px]">
+                    {isBackendConnected
+                      ? 'PostgreSQL active • Guest mode'
+                      : 'Local mode • Everything is saved on this device only.'}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -113,6 +126,43 @@ export function BrunchSheets() {
             </div>
 
             <nav className="menu">
+              {user ? (
+                <button
+                  onClick={async () => {
+                    await signOut();
+                    closeSheet();
+                  }}
+                  className="text-rose-400 hover:text-rose-300"
+                >
+                  <span>Sign out ({user.email})</span>
+                  <Icon name="close" size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    closeSheet();
+                    openAuthModal();
+                  }}
+                  className="text-accent font-semibold"
+                >
+                  <span>Sign In / Create Account</span>
+                  <Icon name="chev" size={18} />
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  closeSheet();
+                  openAuthModal();
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${isBackendConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <span>Database Setup & Status</span>
+                </div>
+                <Icon name="chev" size={18} />
+              </button>
+
               <button
                 onClick={() => {
                   closeSheet();
@@ -139,9 +189,6 @@ export function BrunchSheets() {
               >
                 <span>Following</span>
                 <Icon name="chev" size={18} />
-              </button>
-              <button onClick={() => saveProfileSettings(profileName, makerBio, makerLink, supportLinks, !showSamplesCheck)}>
-                <span onClick={() => closeSheet()}>Save profile</span>
               </button>
             </nav>
 
