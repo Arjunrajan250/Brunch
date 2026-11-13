@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBrunch } from '@/context/BrunchContext';
-import { LaunchType, PlatformKey } from '@/types/brunch';
+import { LaunchType, PlatformKey, Launch } from '@/types/brunch';
 import {
   TYPE,
   PLAT,
@@ -11,36 +11,61 @@ import {
   HUES,
   parseUrl,
 } from '@/data/seed';
-import { uploadMedia } from '@/lib/supabase/storage';
+import { detectLink } from '@/data/stores';
 import { LaunchRow } from '@/components/common/LaunchComponents';
 import { Glyph, Icon } from '@/components/icons/Icons';
+import { uploadMedia } from '@/lib/supabase/storage';
+
+const LF_STEPS = [
+  { short: 'Basics', title: 'The basics', desc: 'Name it, say what it does, and link where people can try it.' },
+  { short: 'Extras', title: 'Make it stand out', desc: 'An icon, screenshots and a short story help people tap. You can skip all of this.' },
+  { short: 'Launch', title: 'Almost there', desc: 'Tell people who made it, then launch.' },
+];
 
 export function LaunchForm({ editId }: { editId?: string }) {
   const { allLaunches, saveLaunchItem, go, makerName, makerBio, makerLink, toast } = useBrunch();
 
   const existing = editId ? allLaunches.find((x) => x.id === editId) : null;
 
+  const [step, setStep] = useState(0);
+
+  // Form Fields
   const [name, setName] = useState(existing?.name || '');
   const [tag, setTag] = useState(existing?.tag || '');
   const [type, setType] = useState<LaunchType>(existing?.type || 'game');
   const [url, setUrl] = useState(existing?.url || '');
-  const [repo, setRepo] = useState(existing?.repo || '');
+  const [extraLinks, setExtraLinks] = useState<string[]>(existing?.links || (existing?.repo ? [existing.repo] : ['']));
   const [plats, setPlats] = useState<PlatformKey[]>(existing?.plats || ['w']);
   const [desc, setDesc] = useState(existing?.desc || '');
   const [tags, setTags] = useState<string[]>(existing?.tags || []);
   const [maker, setMaker] = useState(existing?.maker || makerName || '');
-  const [social, setSocial] = useState(existing?.social || makerLink || '');
   const [bio, setBio] = useState(existing?.bio || makerBio || '');
-  const [glyph, setGlyph] = useState(existing?.glyph || 'gamepad');
+  const [social, setSocial] = useState(existing?.social || makerLink || '');
+  const [glyph, setGlyph] = useState(existing?.glyph || 'star');
   const [hue, setHue] = useState(existing?.hue ?? 185);
   const [icon, setIcon] = useState(existing?.icon || '');
   const [shots, setShots] = useState<string[]>(existing?.shots || []);
-  const [own, setOwn] = useState(!!existing);
+  const [own, setOwn] = useState(true);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+
+  // Auto-detect platforms based on URL
+  useEffect(() => {
+    if (!existing && url) {
+      const st = detectLink(url);
+      if (st && st.k) {
+        if (st.k === 'play' && !plats.includes('a')) setPlats((p) => [...p, 'a']);
+        if (st.k === 'appstore' && !plats.includes('i')) setPlats((p) => [...p, 'i']);
+        if ((st.k === 'steam' || st.k === 'msstore' || st.k === 'epic') && !plats.includes('d')) setPlats((p) => [...p, 'd']);
+      }
+    }
+  }, [url, existing, plats]);
 
   const togglePlatform = (p: PlatformKey) => {
-    setPlats((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+    setPlats((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    );
   };
 
   const toggleTag = (t: string) => {
@@ -58,6 +83,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
     const files = e.target.files;
     if (!files || !files.length) return;
 
+    setUploading(true);
     for (const file of Array.from(files)) {
       const res = await uploadMedia(file, kind === 'icon' ? 'icons' : 'shots');
       if (res.url) {
@@ -70,39 +96,58 @@ export function LaunchForm({ editId }: { editId?: string }) {
         toast(res.error);
       }
     }
+    setUploading(false);
     e.target.value = '';
+  };
+
+  const validateStep0 = () => {
+    const errs: Record<string, string> = {};
+    if (name.trim().length < 2) errs.name = 'Give it a name of at least 2 characters';
+    if (tag.trim().length < 5) errs.tag = 'Add a one-line pitch (at least 5 characters)';
+    const parsedUrl = parseUrl(url);
+    if (!parsedUrl.ok) errs.url = parsedUrl.err || 'Invalid link';
+    if (!plats.length) errs.plats = 'Pick at least one platform';
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const validateStep2 = () => {
+    const errs: Record<string, string> = {};
+    if (!maker.trim()) errs.maker = 'Add your name or team name';
+    if (!own) errs.own = 'Please confirm you made this';
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleNext = () => {
+    if (step === 0) {
+      if (validateStep0()) setStep(1);
+    } else if (step === 1) {
+      setStep(2);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: Record<string, string> = {};
-
-    if (name.trim().length < 2) newErrors.name = 'Give it a name of at least 2 characters';
-    if (tag.trim().length < 5) newErrors.tag = 'Add a one-line pitch, at least 5 characters';
-    const parsedUrl = parseUrl(url);
-    if (!parsedUrl.ok) newErrors.url = parsedUrl.err || 'Invalid link';
-    if (repo.trim()) {
-      const parsedRepo = parseUrl(repo);
-      if (!parsedRepo.ok) newErrors.repo = parsedRepo.err || 'Invalid repo link';
-    }
-    if (!plats.length) newErrors.plats = 'Pick at least one platform';
-    if (!maker.trim()) newErrors.maker = 'Add your name or team name';
-    if (!own) newErrors.own = 'Please confirm you made this';
-
-    setErrors(newErrors);
-
-    if (Object.keys(newErrors).length > 0) {
-      toast('Please fix the highlighted errors');
+    if (!validateStep0()) {
+      setStep(0);
       return;
     }
+    if (!validateStep2()) {
+      setStep(2);
+      return;
+    }
+
+    const cleanLinks = extraLinks.map((l) => l.trim()).filter((l) => parseUrl(l).ok);
 
     const launchId = saveLaunchItem(
       {
         name: name.trim(),
         tag: tag.trim(),
         type,
-        url: parsedUrl.ok ? parsedUrl.href : url,
-        repo: repo.trim(),
+        url: parseUrl(url).ok ? parseUrl(url).href : url,
+        links: cleanLinks,
+        repo: cleanLinks[0] || '',
         plats,
         tags,
         desc: desc.trim(),
@@ -121,7 +166,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
   };
 
   // Preview launch object
-  const previewLaunch = {
+  const previewLaunch: Launch = {
     id: 'preview',
     name: name.trim() || 'Your launch',
     tag: tag.trim() || 'One line about what it does',
@@ -134,299 +179,395 @@ export function LaunchForm({ editId }: { editId?: string }) {
     hue,
     icon,
     url,
-    repo,
+    links: extraLinks.filter(Boolean),
     ts: Date.now(),
   };
 
   return (
-    <form className="stack max-w-[680px]" style={{ gap: '22px' }} onSubmit={handleSubmit} noValidate>
-      <div>
-        <p className="fine mb-1.5">Live Preview</p>
-        <div className="border border-[var(--line)] rounded-2xl p-3 bg-[var(--surface)]">
-          <LaunchRow launch={previewLaunch} />
+    <div className="max-w-[720px] mx-auto py-2">
+      {/* Steps Progress */}
+      <ol className="lf-steps mb-6" aria-label="Progress">
+        {LF_STEPS.map((s, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && <li className="lf-ln" aria-hidden="true" data-d={i <= step ? 1 : 0} />}
+            <li>
+              <button
+                type="button"
+                className="lf-st"
+                data-s={i === step ? 'cur' : i < step ? 'done' : 'todo'}
+                aria-current={i === step ? 'step' : undefined}
+                onClick={() => {
+                  if (i < step || validateStep0()) setStep(i);
+                }}
+              >
+                <span className="lf-n">{i < step ? <Icon name="check" size={14} /> : i + 1}</span>
+                <span className="lf-t">{s.short}</span>
+              </button>
+            </li>
+          </React.Fragment>
+        ))}
+      </ol>
+
+      {/* Header for Step */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold font-heading text-[var(--fg)]">
+          {LF_STEPS[step].title}
+        </h1>
+        <p className="text-sm text-[var(--fg-2)] mt-1">
+          {LF_STEPS[step].desc}
+        </p>
+      </div>
+
+      <form className="stack" style={{ gap: '22px' }} onSubmit={handleSubmit} noValidate>
+        {/* Live Preview Box */}
+        <div>
+          <p className="fine mb-1.5">Live Preview</p>
+          <div className="border border-[var(--line)] rounded-2xl p-3 bg-[var(--surface)]">
+            <LaunchRow launch={previewLaunch} />
+          </div>
         </div>
-      </div>
 
-      {/* Name */}
-      <div className="field">
-        <label htmlFor="f-name">Name</label>
-        <input
-          id="f-name"
-          type="text"
-          maxLength={40}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Tidepool"
-          aria-invalid={!!errors.name}
-        />
-        {errors.name && <span className="err" role="alert">{errors.name}</span>}
-      </div>
+        {/* STEP 0: BASICS */}
+        {step === 0 && (
+          <div className="space-y-5 animate-fade-in">
+            {/* Name */}
+            <div className="field">
+              <label htmlFor="f-name">Name</label>
+              <input
+                id="f-name"
+                type="text"
+                maxLength={40}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Tidepool"
+                aria-invalid={!!errors.name}
+              />
+              {errors.name && <p className="err-msg">{errors.name}</p>}
+            </div>
 
-      {/* Tagline */}
-      <div className="field">
-        <label htmlFor="f-tag">One-line pitch</label>
-        <input
-          id="f-tag"
-          type="text"
-          maxLength={70}
-          value={tag}
-          onChange={(e) => setTag(e.target.value)}
-          placeholder="Grow a reef and run a tiny harbour"
-          aria-invalid={!!errors.tag}
-        />
-        <span className="hint">What does it do, in plain words?</span>
-        {errors.tag && <span className="err" role="alert">{errors.tag}</span>}
-      </div>
+            {/* Tagline */}
+            <div className="field">
+              <label htmlFor="f-tag">One-line pitch</label>
+              <input
+                id="f-tag"
+                type="text"
+                maxLength={80}
+                value={tag}
+                onChange={(e) => setTag(e.target.value)}
+                placeholder="Grow a reef and run a tiny harbour"
+                aria-invalid={!!errors.tag}
+              />
+              {errors.tag && <p className="err-msg">{errors.tag}</p>}
+            </div>
 
-      {/* Type */}
-      <div className="field">
-        <span className="lbl">What is it?</span>
-        <div className="chips wrap" role="group" aria-label="Type">
-          {Object.entries(TYPE).map(([tKey, tInfo]) => (
-            <button
-              key={tKey}
-              type="button"
-              className="chip"
-              aria-pressed={type === tKey}
-              onClick={() => setType(tKey as LaunchType)}
-            >
-              {tInfo.label}
-            </button>
-          ))}
-        </div>
-      </div>
+            {/* Type */}
+            <div className="field">
+              <span className="lbl">Type</span>
+              <div className="seg" role="group" aria-label="Launch type">
+                {(Object.keys(TYPE) as LaunchType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={type === t}
+                    onClick={() => setType(t)}
+                  >
+                    {TYPE[t].label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      {/* URL */}
-      <div className="field">
-        <label htmlFor="f-url">Where can people try it?</label>
-        <input
-          id="f-url"
-          type="url"
-          inputMode="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://yourgame.itch.io/tidepool"
-          aria-invalid={!!errors.url}
-        />
-        <span className="hint">Your site, itch.io page, store listing or GitHub. Must be a web link.</span>
-        {errors.url && <span className="err" role="alert">{errors.url}</span>}
-      </div>
+            {/* Main URL */}
+            <div className="field">
+              <label htmlFor="f-url">Website or main link</label>
+              <input
+                id="f-url"
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://tidepool.app or github.com/..."
+                aria-invalid={!!errors.url}
+              />
+              {errors.url && <p className="err-msg">{errors.url}</p>}
+            </div>
 
-      {/* GitHub Repo */}
-      <div className="field">
-        <label htmlFor="f-repo">Source code on GitHub (optional)</label>
-        <input
-          id="f-repo"
-          type="url"
-          inputMode="url"
-          value={repo}
-          onChange={(e) => setRepo(e.target.value)}
-          placeholder="https://github.com/you/project"
-          aria-invalid={!!errors.repo}
-        />
-        <span className="hint">Adds a GitHub tag to your launch and a View source button, so people know the code is open.</span>
-        {errors.repo && <span className="err" role="alert">{errors.repo}</span>}
-      </div>
-
-      {/* Platforms */}
-      <div className="field">
-        <span className="lbl">Works on</span>
-        <div className="chips wrap" role="group" aria-label="Platforms">
-          {Object.entries(PLAT).map(([pKey, pLabel]) => (
-            <button
-              key={pKey}
-              type="button"
-              className="chip"
-              aria-pressed={plats.includes(pKey as PlatformKey)}
-              onClick={() => togglePlatform(pKey as PlatformKey)}
-            >
-              {pLabel}
-            </button>
-          ))}
-        </div>
-        {errors.plats && <span className="err" role="alert">{errors.plats}</span>}
-      </div>
-
-      {/* Description */}
-      <div className="field">
-        <label htmlFor="f-desc">About (optional)</label>
-        <textarea
-          id="f-desc"
-          maxLength={600}
-          rows={4}
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          placeholder="What is it, why did you make it, what should people try first?"
-        />
-        <span className="cnt">{desc.length} / 600</span>
-      </div>
-
-      {/* Screenshots */}
-      <div className="field">
-        <span className="lbl">Screenshots (optional, up to 3)</span>
-        {shots.length > 0 && (
-          <div className="thumbs">
-            {shots.map((s, i) => (
-              <div key={i} className="thumb">
-                <img src={s} alt={`Screenshot ${i + 1}`} />
+            {/* Extra Store Links */}
+            <div className="field">
+              <label>Extra store or repo links (optional)</label>
+              {extraLinks.map((link, idx) => (
+                <div key={idx} className="flex gap-2 mb-2">
+                  <input
+                    type="url"
+                    value={link}
+                    onChange={(e) => {
+                      const updated = [...extraLinks];
+                      updated[idx] = e.target.value;
+                      setExtraLinks(updated);
+                    }}
+                    placeholder="https://play.google.com/..., https://github.com/..."
+                    className="flex-1"
+                  />
+                  {extraLinks.length > 1 && (
+                    <button
+                      type="button"
+                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"
+                      onClick={() => setExtraLinks(extraLinks.filter((_, i) => i !== idx))}
+                    >
+                      <Icon name="trash" size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {extraLinks.length < 4 && (
                 <button
                   type="button"
-                  onClick={() => setShots((prev) => prev.filter((_, idx) => idx !== i))}
-                  aria-label="Remove screenshot"
+                  className="btn text sm text-xs"
+                  onClick={() => setExtraLinks([...extraLinks, ''])}
                 >
-                  <Icon name="close" size={14} />
+                  + Add another link
                 </button>
+              )}
+            </div>
+
+            {/* Platforms */}
+            <div className="field">
+              <span className="lbl">Platforms</span>
+              <div className="chips wrap" role="group" aria-label="Platforms">
+                {(Object.keys(PLAT) as PlatformKey[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className="chip"
+                    aria-pressed={plats.includes(p)}
+                    onClick={() => togglePlatform(p)}
+                  >
+                    {PLAT[p]}
+                  </button>
+                ))}
               </div>
-            ))}
+              {errors.plats && <p className="err-msg">{errors.plats}</p>}
+            </div>
           </div>
         )}
-        <div className="flex items-center gap-3 mt-1 flex-wrap">
-          <label className={`btn out sm cursor-pointer ${shots.length >= 3 ? 'opacity-50 pointer-events-none' : ''}`}>
-            <Icon name="image" size={16} />
-            <span>Add screenshots</span>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              className="hidden"
-              onChange={(e) => handleImageUpload(e, 'shots')}
-              disabled={shots.length >= 3}
-            />
-          </label>
-          <span className="hint">PNG, JPEG or WebP.</span>
-        </div>
-      </div>
 
-      {/* Icon & Theme */}
-      <div className="field">
-        <span className="lbl">Icon & Color</span>
-        <div className="flex items-center gap-3 mt-1 flex-wrap">
-          <label className="btn out sm cursor-pointer">
-            <Icon name="image" size={16} />
-            <span>{icon ? 'Change image' : 'Upload image'}</span>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={(e) => handleImageUpload(e, 'icon')}
-            />
-          </label>
-          {icon && (
-            <button type="button" className="btn text sm" onClick={() => setIcon('')}>
-              Remove
+        {/* STEP 1: EXTRAS */}
+        {step === 1 && (
+          <div className="space-y-5 animate-fade-in">
+            {/* Story / Description */}
+            <div className="field">
+              <label htmlFor="f-desc">The story (optional)</label>
+              <textarea
+                id="f-desc"
+                rows={4}
+                maxLength={600}
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Why did you build it? What was tricky? What are you proud of?"
+              />
+              <span className="cnt self-end text-xs opacity-60">{desc.length} / 600</span>
+            </div>
+
+            {/* Tags */}
+            <div className="field">
+              <span className="lbl">Tags (up to 3)</span>
+              <div className="chips wrap" role="group" aria-label="Tags">
+                {TAGS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className="chip"
+                    aria-pressed={tags.includes(t)}
+                    onClick={() => toggleTag(t)}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Screenshots */}
+            <div className="field">
+              <span className="lbl">Screenshots (optional, up to 3)</span>
+              {shots.length > 0 && (
+                <div className="thumbs flex gap-3 mb-2 flex-wrap">
+                  {shots.map((s, i) => (
+                    <div key={i} className="thumb relative w-24 h-16 rounded-xl overflow-hidden border border-[var(--line)]">
+                      <img src={s} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setShots((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"
+                        aria-label="Remove screenshot"
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <label className={`btn out sm cursor-pointer ${shots.length >= 3 ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <Icon name="image" size={16} />
+                  <span>{uploading ? 'Uploading...' : 'Add screenshots'}</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleImageUpload(e, 'shots')}
+                    disabled={shots.length >= 3 || uploading}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Icon & Theme */}
+            <div className="field">
+              <span className="lbl">Icon & Theme Color</span>
+              <div className="flex items-center gap-3 mb-3">
+                <label className="btn out sm cursor-pointer">
+                  <Icon name="image" size={16} />
+                  <span>{icon ? 'Change image' : 'Upload image'}</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => handleImageUpload(e, 'icon')}
+                  />
+                </label>
+                {icon && (
+                  <button type="button" className="btn text sm" onClick={() => setIcon('')}>
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              {/* Symbol selector */}
+              <div className="glyphs mt-2 flex flex-wrap gap-2" role="group" aria-label="Symbol">
+                {GLYPHS.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className="gbtn p-2 rounded-xl border border-[var(--line)] hover:bg-[var(--surface-2)]"
+                    aria-pressed={glyph === g}
+                    onClick={() => setGlyph(g)}
+                  >
+                    <Glyph name={g} size={22} />
+                  </button>
+                ))}
+              </div>
+
+              {/* Color swatches */}
+              <div className="sw mt-3 flex flex-wrap gap-2" role="group" aria-label="Colour">
+                {HUES.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    className="swb w-7 h-7 rounded-full border border-black/10"
+                    style={{ '--h': h, backgroundColor: `hsl(${h}, 70%, 50%)` } as React.CSSProperties}
+                    aria-pressed={hue === h}
+                    onClick={() => setHue(h)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: LAUNCH */}
+        {step === 2 && (
+          <div className="space-y-5 animate-fade-in">
+            {/* Maker */}
+            <div className="field">
+              <label htmlFor="f-maker">Maker or team name</label>
+              <input
+                id="f-maker"
+                type="text"
+                maxLength={40}
+                value={maker}
+                onChange={(e) => setMaker(e.target.value)}
+                placeholder="Alex Chen"
+                aria-invalid={!!errors.maker}
+              />
+              {errors.maker && <p className="err-msg">{errors.maker}</p>}
+            </div>
+
+            {/* Maker Bio */}
+            <div className="field">
+              <label htmlFor="f-bio">Short bio</label>
+              <input
+                id="f-bio"
+                type="text"
+                maxLength={100}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Solo dev making cozy web apps"
+              />
+            </div>
+
+            {/* Social Link */}
+            <div className="field">
+              <label htmlFor="f-social">Link to follow your work</label>
+              <input
+                id="f-social"
+                type="url"
+                value={social}
+                onChange={(e) => setSocial(e.target.value)}
+                placeholder="https://x.com/yourhandle or github.com/..."
+              />
+            </div>
+
+            {/* Ownership Confirmation */}
+            <label className="check flex items-center gap-2 cursor-pointer pt-2">
+              <input
+                type="checkbox"
+                checked={own}
+                onChange={(e) => setOwn(e.target.checked)}
+              />
+              <span className="text-sm">I made this (or I am on the team that did).</span>
+            </label>
+            {errors.own && <p className="err-msg">{errors.own}</p>}
+          </div>
+        )}
+
+        {/* Buttons Row */}
+        <div className="flex items-center justify-between pt-4 border-t border-[var(--line)]">
+          {step > 0 ? (
+            <button
+              type="button"
+              className="btn out"
+              onClick={() => setStep((s) => s - 1)}
+            >
+              Back
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn text"
+              onClick={() => go({ t: 'tab', tab: 'home' })}
+            >
+              Cancel
             </button>
           )}
-          <span className="hint">Square works best. Or pick a symbol and colour below.</span>
-        </div>
 
-        <div className="glyphs mt-2" role="group" aria-label="Symbol">
-          {GLYPHS.map((g) => (
+          {step < 2 ? (
             <button
-              key={g}
               type="button"
-              className="gbtn"
-              aria-label={g}
-              aria-pressed={glyph === g}
-              onClick={() => setGlyph(g)}
+              className="btn fill"
+              onClick={handleNext}
             >
-              <Glyph name={g} size={22} />
+              Next step
             </button>
-          ))}
-        </div>
-
-        <div className="sw mt-2" role="group" aria-label="Colour">
-          {HUES.map((h) => (
+          ) : (
             <button
-              key={h}
-              type="button"
-              className="swb"
-              style={{ '--h': h } as React.CSSProperties}
-              aria-label={`Colour ${h}`}
-              aria-pressed={hue === h}
-              onClick={() => setHue(h)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Tags */}
-      <div className="field">
-        <span className="lbl">Tags (up to 3)</span>
-        <div className="chips wrap" role="group" aria-label="Tags">
-          {TAGS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className="chip"
-              aria-pressed={tags.includes(t)}
-              onClick={() => toggleTag(t)}
+              type="submit"
+              className="btn fill font-bold px-6"
             >
-              {t}
+              {editId ? 'Save changes' : 'Launch yours'}
             </button>
-          ))}
+          )}
         </div>
-      </div>
-
-      {/* Maker name */}
-      <div className="field">
-        <label htmlFor="f-maker">Your name or team</label>
-        <input
-          id="f-maker"
-          type="text"
-          maxLength={40}
-          value={maker}
-          onChange={(e) => setMaker(e.target.value)}
-          placeholder="Mara Okafor"
-          aria-invalid={!!errors.maker}
-        />
-        {errors.maker && <span className="err" role="alert">{errors.maker}</span>}
-      </div>
-
-      {/* Social link */}
-      <div className="field">
-        <label htmlFor="f-social">Where can people follow you? (optional)</label>
-        <input
-          id="f-social"
-          type="url"
-          inputMode="url"
-          value={social}
-          onChange={(e) => setSocial(e.target.value)}
-          placeholder="https://instagram.com/yourhandle"
-        />
-        <span className="hint">Instagram, X, GitHub, YouTube or your own site.</span>
-      </div>
-
-      {/* Bio */}
-      <div className="field">
-        <label htmlFor="f-bio">One line about you (optional)</label>
-        <input
-          id="f-bio"
-          type="text"
-          maxLength={100}
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          placeholder="Makes small cozy things after work."
-        />
-      </div>
-
-      {/* Confirmation */}
-      <label className="check cursor-pointer">
-        <input
-          type="checkbox"
-          checked={own}
-          onChange={(e) => setOwn(e.target.checked)}
-        />
-        <span>I made this, or I am part of the team that did.</span>
-      </label>
-      {errors.own && <span className="err" role="alert">{errors.own}</span>}
-
-      {/* Submit bar */}
-      <div className="formbar">
-        <button className="btn fill lg" type="submit">
-          {editId ? 'Save changes' : 'Launch it'}
-        </button>
-        <span className="fine">Free. No payment, no review queue.</span>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

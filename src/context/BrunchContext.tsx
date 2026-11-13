@@ -31,17 +31,19 @@ const STORAGE_KEY = 'kiosk.board.v3';
 
 export type Route =
   | { t: 'tab'; tab: MainTab }
+  | { t: 'me'; sub?: 'launches' | 'saved' | 'following' }
   | { t: 'launch'; id: string }
   | { t: 'dash'; id: string; demo?: boolean; m?: MetricType; d?: number }
   | { t: 'maker'; key: string }
-  | { t: 'comm'; id: string }
+  | { t: 'comm'; id: string; ctab?: 'posts' | 'members' }
   | { t: 'post'; id: string }
   | { t: 'saved'; sub: 'saved' | 'mine' | 'following' }
   | { t: 'search'; q: string; f: string }
   | { t: 'submit'; edit?: string }
   | { t: 'newcomm' }
   | { t: 'newpost'; cid?: string }
-  | { t: 'coll'; title: string; ids: string[]; rank?: boolean };
+  | { t: 'coll'; title: string; ids: string[]; rank?: boolean }
+  | { t: 'chat'; cid?: string; ch?: string };
 
 export type SheetType =
   | null
@@ -51,6 +53,7 @@ export type SheetType =
   | { type: 'report'; id: string }
   | { type: 'deleteLaunch'; id: string }
   | { type: 'deletePost'; id: string }
+  | { type: 'notif' }
   | { type: 'rankinfo' };
 
 export interface UserProfile {
@@ -151,6 +154,20 @@ interface BrunchContextType {
   closeSheet: () => void;
   toastMsg: string | null;
   toast: (msg: string) => void;
+
+  // Explore & Actions
+  rollRandom: () => void;
+  createMenuOpen: boolean;
+  openCreateMenu: () => void;
+  closeCreateMenu: () => void;
+  lightbox: { images: string[]; index: number } | null;
+  openLightbox: (images: string[], index?: number) => void;
+  closeLightbox: () => void;
+  shareLaunch: Launch | null;
+  openShareLaunch: (l: Launch) => void;
+  closeShareLaunch: () => void;
+  unreadNotifs: number;
+  openNotifsSheet: () => void;
 }
 
 const BrunchContext = createContext<BrunchContextType | null>(null);
@@ -225,6 +242,12 @@ export function BrunchProvider({ children }: { children: ReactNode }) {
 
   const [activeSheet, setActiveSheet] = useState<SheetType>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // New Features State
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+  const [shareLaunch, setShareLaunch] = useState<Launch | null>(null);
+  const [unreadNotifs, setUnreadNotifs] = useState(2);
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -1094,6 +1117,34 @@ export function BrunchProvider({ children }: { children: ReactNode }) {
     setRecents([]);
   }, []);
 
+  const rollRandom = useCallback(() => {
+    if (allLaunches.length === 0) return;
+    const randomLaunch = allLaunches[Math.floor(Math.random() * allLaunches.length)];
+    go({ t: 'launch', id: randomLaunch.id });
+    toast(`Rolled: ${randomLaunch.name}`);
+  }, [allLaunches, go, toast]);
+
+  const openLightbox = useCallback((images: string[], index = 0) => {
+    setLightbox({ images, index });
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    setLightbox(null);
+  }, []);
+
+  const openShareLaunch = useCallback((l: Launch) => {
+    setShareLaunch(l);
+  }, []);
+
+  const closeShareLaunch = useCallback(() => {
+    setShareLaunch(null);
+  }, []);
+
+  const openNotifsSheet = useCallback(() => {
+    setUnreadNotifs(0);
+    setActiveSheet({ type: 'notif' });
+  }, []);
+
   return (
     <BrunchContext.Provider
       value={{
@@ -1163,6 +1214,18 @@ export function BrunchProvider({ children }: { children: ReactNode }) {
         closeSheet: () => setActiveSheet(null),
         toastMsg,
         toast,
+        rollRandom,
+        createMenuOpen,
+        openCreateMenu: () => setCreateMenuOpen(true),
+        closeCreateMenu: () => setCreateMenuOpen(false),
+        lightbox,
+        openLightbox,
+        closeLightbox,
+        shareLaunch,
+        openShareLaunch,
+        closeShareLaunch,
+        unreadNotifs,
+        openNotifsSheet,
       }}
     >
       {children}

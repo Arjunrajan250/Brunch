@@ -10,19 +10,54 @@ export const TYPE: Record<LaunchType, { label: string; plural: string; glyph: st
 
 export const TABS = {
   home: { label: 'Home', icon: 'home', type: '' },
+  explore: { label: 'Explore', icon: 'compass', type: '' },
+  community: { label: 'Community', icon: 'users', type: '' },
   games: { label: 'Games', icon: 'games', type: 'game' },
   apps: { label: 'Apps', icon: 'apps', type: 'app' },
-  tools: { label: 'Tools', icon: 'tools', type: 'tool' },
-  community: { label: 'Community', icon: 'users', type: '' }
+  tools: { label: 'Tools', icon: 'tools', type: 'tool' }
 };
 
 export const TYPE_SUBS: [string, string][] = [['foryou', 'For you'], ['charts', 'Top charts'], ['cats', 'Categories']];
 export const SUBS: Record<string, [string, string][]> = {
-  home: [['foryou', 'For you'], ['charts', 'Top charts'], ['creators', 'Creators'], ['cats', 'Categories']],
+  home: [['foryou', 'For you'], ['charts', 'Top charts'], ['creators', 'Creators']],
+  explore: [],
+  community: [['feed', 'Feed'], ['explore', 'Communities'], ['messages', 'Messages']],
   games: TYPE_SUBS,
   apps: TYPE_SUBS,
-  tools: TYPE_SUBS,
-  community: [['feed', 'Feed'], ['explore', 'Communities']]
+  tools: TYPE_SUBS
+};
+
+export const PAL: Record<string, [string, string]> = {
+  y: ['#ffe600', '#2a2400'],
+  b: ['#bfe3ff', '#0b2f4d'],
+  p: ['#ffc6d9', '#5a0f2e'],
+  l: ['#e0d3f7', '#2f1a5c']
+};
+
+export const TAGG: Record<string, string> = {
+  cozy: 'g:leaf',
+  puzzle: 'i:puzzle',
+  multiplayer: 'i:users',
+  offline: 'g:plane',
+  'no signup': 'g:bolt',
+  'open source': 'i:code',
+  'jam entry': 'g:rocket',
+  'solo-dev': 'g:coffee',
+  daily: 'g:calendar',
+  privacy: 'g:shield',
+  design: 'g:pencil',
+  productivity: 'g:list',
+  music: 'g:music',
+  learning: 'g:book',
+  community: 'g:chat',
+  'for fun': 'g:dice'
+};
+
+export const CHARTK: Record<string, [string, string, string, string]> = {
+  hot: ['Hot this week', 'Trending right now', 'y', 'g:flame'],
+  new: ['Newest', 'Just launched', 'b', 'i:clock'],
+  top: ['Most upvoted', 'Fan favourites', 'p', 'i:up'],
+  tried: ['Most tried', 'Opened the most', 'l', 'i:play']
 };
 
 export const SUP: Record<string, { label: string; glyph: string; hint: string; id: boolean }> = {
@@ -255,6 +290,11 @@ export const views = (l: Launch, cw: Record<string, number> = {}) => cw[l.id] ||
 export const saves = (l: Launch, cs: Record<string, number> = {}) => cs[l.id] || 0;
 export const hot = (l: Launch, cv: Record<string, number> = {}, now?: number) =>
   (votes(l, cv) + 1) / Math.pow(((now ?? (typeof window !== 'undefined' ? Date.now() : BASE_NOW)) - l.ts) / DAY + 2, 1.3);
+
+export const sortHot = (l: Launch[], cv: Record<string, number> = {}) => l.slice().sort((a, b) => hot(b, cv) - hot(a, cv));
+export const sortNew = (l: Launch[]) => l.slice().sort((a, b) => b.ts - a.ts);
+export const sortTop = (l: Launch[], cv: Record<string, number> = {}) => l.slice().sort((a, b) => votes(b, cv) - votes(a, cv));
+export const sortTried = (l: Launch[], cc: Record<string, number> = {}) => l.slice().sort((a, b) => tries(b, cc) - tries(a, cc));
 
 export const isGH = (l: Launch) => !!(l.repo || (parseUrl(l.url).host === 'github.com'));
 export const ghHref = (l: Launch) => l.repo || (parseUrl(l.url).host === 'github.com' ? l.url : '');

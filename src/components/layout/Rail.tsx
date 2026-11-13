@@ -3,17 +3,18 @@
 import React from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { BrunchLogo, Icon } from '@/components/icons/Icons';
-import { TABS } from '@/data/seed';
 import { MainTab } from '@/types/brunch';
 
 export function Rail() {
   const { currentRoute, activeTab, setTab, go } = useBrunch();
 
-  const isSaved = currentRoute.t === 'saved' && currentRoute.sub !== 'mine';
-  const isMine = currentRoute.t === 'saved' && currentRoute.sub === 'mine';
+  const isHome = currentRoute.t === 'tab' && activeTab === 'home';
+  const isExplore = currentRoute.t === 'tab' && activeTab === 'explore';
+  const isCommunity = currentRoute.t === 'tab' && activeTab === 'community';
+  const isMe = currentRoute.t === 'me' || (currentRoute.t === 'saved' && currentRoute.sub === 'mine');
 
   return (
-    <aside className="rail" aria-label="Primary">
+    <aside className="rail" id="rail" aria-label="Primary">
       <button
         className="brand rail-brand"
         onClick={() => setTab('home')}
@@ -23,48 +24,64 @@ export function Rail() {
         <span>Brunch</span>
       </button>
 
-      {(Object.keys(TABS) as MainTab[]).map((tabKey) => {
-        const tab = TABS[tabKey];
-        const isActive = currentRoute.t === 'tab' && activeTab === tabKey;
-        return (
-          <button
-            key={tabKey}
-            className="ni"
-            onClick={() => setTab(tabKey)}
-            aria-current={isActive ? 'page' : undefined}
-          >
-            <span className="pill">
-              <Icon name={tab.icon} size={22} />
-            </span>
-            <span>{tab.label}</span>
-          </button>
-        );
-      })}
-
-      <div className="h-[1px] bg-[var(--line)] self-stretch mx-[14px] my-[6px] shrink-0" />
-
+      {/* Home */}
       <button
         className="ni"
-        onClick={() => go({ t: 'saved', sub: 'saved' })}
-        aria-current={isSaved ? 'page' : undefined}
+        onClick={() => setTab('home')}
+        aria-current={isHome ? 'page' : undefined}
       >
         <span className="pill">
-          <Icon name="bookmark" size={22} />
+          <Icon name="home" size={22} />
         </span>
-        <span>Saved</span>
+        <span>Home</span>
       </button>
 
+      {/* Explore */}
       <button
         className="ni"
-        onClick={() => go({ t: 'saved', sub: 'mine' })}
-        aria-current={isMine ? 'page' : undefined}
+        onClick={() => setTab('explore')}
+        aria-current={isExplore ? 'page' : undefined}
       >
         <span className="pill">
-          <Icon name="chart" size={22} />
+          <Icon name="compass" size={22} />
         </span>
-        <span>Launches</span>
+        <span>Explore</span>
+      </button>
+
+      {/* Community */}
+      <button
+        className="ni"
+        onClick={() => setTab('community')}
+        aria-current={isCommunity ? 'page' : undefined}
+      >
+        <span className="pill">
+          <Icon name="users" size={22} />
+        </span>
+        <span>Community</span>
+      </button>
+
+      {/* Profile */}
+      <button
+        className="ni"
+        onClick={() => go({ t: 'me', sub: 'launches' })}
+        aria-current={isMe ? 'page' : undefined}
+      >
+        <span className="pill">
+          <Icon name="user" size={22} />
+        </span>
+        <span>Profile</span>
+      </button>
+
+      <div className="h-[1px] bg-[var(--line)] self-stretch mx-[14px] my-[10px] shrink-0" />
+
+      {/* Launch Yours Button */}
+      <button
+        className="btn fill sm mx-2"
+        onClick={() => go({ t: 'submit' })}
+      >
+        <Icon name="plus" size={16} />
+        <span>Launch yours</span>
       </button>
     </aside>
   );
 }
-

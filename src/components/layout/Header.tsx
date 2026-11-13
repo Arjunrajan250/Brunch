@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { BrunchLogo, Icon } from '@/components/icons/Icons';
-import { SUBS, TABS } from '@/data/seed';
+import { SUBS } from '@/data/seed';
 import { MainTab } from '@/types/brunch';
 
 export function Header() {
@@ -22,6 +22,8 @@ export function Header() {
     user,
     isBackendConnected,
     openAuthModal,
+    unreadNotifs,
+    openNotifsSheet,
   } = useBrunch();
 
   const [scrolled, setScrolled] = useState(false);
@@ -34,7 +36,23 @@ export function Header() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const isTop = currentRoute.t === 'tab' || currentRoute.t === 'saved';
+  // Keyboard shortcut '/' to trigger search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === '/' &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault();
+        go({ t: 'search', q: '', f: 'all' });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [go]);
+
+  const isTop = currentRoute.t === 'tab' || currentRoute.t === 'saved' || currentRoute.t === 'me';
   const initial = (makerName || 'You').trim()[0]?.toUpperCase() || 'Y';
   const isCommunity = currentRoute.t === 'tab' && currentRoute.tab === 'community';
 
@@ -53,6 +71,8 @@ export function Header() {
       }
       case 'maker':
         return 'Creator';
+      case 'me':
+        return 'Your Profile';
       case 'submit':
         return currentRoute.edit ? 'Edit your launch' : 'Launch yours';
       case 'newcomm':
@@ -89,32 +109,41 @@ export function Header() {
               >
                 <Icon name="search" size={20} />
                 <span>Search launches, creators and communities</span>
-              </button>
-              <button
-                className="avatar av-in"
-                onClick={() => (user ? openSheet({ type: 'profile' }) : openAuthModal())}
-                aria-label="Your profile and settings"
-              >
-                {initial}
+                <kbd className="kbd" aria-hidden="true">/</kbd>
               </button>
             </div>
 
+            {/* Notification Bell */}
+            <button
+              className="nb"
+              onClick={openNotifsSheet}
+              aria-label="Notifications"
+            >
+              <Icon name="bell" size={20} />
+              {unreadNotifs > 0 && (
+                <span className="nbd">
+                  {unreadNotifs > 9 ? '9+' : unreadNotifs}
+                </span>
+              )}
+            </button>
+
+            {/* Database Status Pill */}
             <button
               onClick={openAuthModal}
               title={isBackendConnected ? 'Supabase Database Active' : 'Local Mode - Click to connect Supabase'}
               className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                 isBackendConnected
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isBackendConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isBackendConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
               <span>{isBackendConnected ? 'PostgreSQL' : 'Local DB'}</span>
             </button>
 
             {!user && (
               <button
-                className="btn ghost sm text-xs font-semibold text-white/80 hover:text-white"
+                className="btn ghost sm text-xs font-semibold text-[var(--fg-2)] hover:text-[var(--fg)]"
                 onClick={openAuthModal}
               >
                 Sign in
@@ -138,10 +167,10 @@ export function Header() {
             </button>
           </div>
 
-          {currentRoute.t === 'tab' && SUBS[currentRoute.tab] && (
+          {currentRoute.t === 'tab' && SUBS[currentRoute.tab] && SUBS[currentRoute.tab].length > 0 && (
             <div className="tabs" role="tablist">
               {SUBS[currentRoute.tab].map(([key, label]) => {
-                const isSelected = subs[currentRoute.tab] === key;
+                const isSelected = (subs as Record<string, string>)[currentRoute.tab] === key;
                 return (
                   <button
                     key={key}
@@ -186,47 +215,14 @@ export function Header() {
             )}
           </div>
         </div>
-      ) : currentRoute.t === 'launch' ? (
-        <div className="hdr-in">
-          <button className="ib" onClick={back} aria-label="Back">
-            <Icon name="back" size={20} />
-          </button>
-          <span className="flex-1" />
-          <button
-            className="ib"
-            onClick={() => go({ t: 'search', q: '', f: 'all' })}
-            aria-label="Search"
-          >
-            <Icon name="search" size={20} />
-          </button>
-          <button
-            className="ib"
-            onClick={() => {
-              if (navigator.clipboard) {
-                navigator.clipboard.writeText(window.location.href);
-              }
-            }}
-            aria-label="Share"
-          >
-            <Icon name="share" size={20} />
-          </button>
-        </div>
       ) : (
         <div className="hdr-in">
           <button className="ib" onClick={back} aria-label="Back">
             <Icon name="back" size={20} />
           </button>
           <h1 className="title-h">{getRouteTitle()}</h1>
-          <button
-            className="ib"
-            onClick={() => go({ t: 'search', q: '', f: 'all' })}
-            aria-label="Search"
-          >
-            <Icon name="search" size={20} />
-          </button>
         </div>
       )}
     </header>
   );
 }
-

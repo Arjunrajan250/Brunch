@@ -18,6 +18,7 @@ import {
   followers as calcFollowers,
   rng,
 } from '@/data/seed';
+import { storesOf, linksOf, STORES } from '@/data/stores';
 import {
   Carousel,
   GitHubBadge,
@@ -43,6 +44,8 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
     getComments,
     postComment,
     toast,
+    openLightbox,
+    openShareLaunch,
   } = useBrunch();
 
   const [commentText, setCommentText] = useState('');
@@ -84,6 +87,9 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
   const soc = socialInfo(launch.social || '');
 
   const comments = getComments(launch.id, 'launch');
+  const detectedStores = storesOf(launch);
+  const primaryStore = detectedStores[0];
+  const primaryCta = primaryStore ? STORES[primaryStore.k].cta : (isGhMain ? 'Open on GitHub' : 'Try it');
 
   // Similar launches: same type or overlapping tags
   const similar = allLaunches
@@ -163,10 +169,7 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
   };
 
   const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(`${launch.name}: ${launch.tag} (${window.location.href})`);
-      toast('Copied to clipboard');
-    }
+    openShareLaunch(launch);
   };
 
   return (
@@ -228,7 +231,7 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
                 rel="noopener noreferrer nofollow ugc"
                 onClick={() => recordTry(launch.id)}
               >
-                <span>{isGhMain ? 'Open on GitHub' : 'Try it'}</span>
+                <span>{primaryCta}</span>
                 <Icon name="external" size={18} />
               </a>
             ) : (
@@ -239,7 +242,26 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
             <VoteButton launch={launch} lg />
           </div>
 
-          {hasRepo && (
+          {detectedStores.length > 0 && (
+            <div className="flex flex-wrap gap-2 my-1">
+              {detectedStores.map((st) => (
+                <a
+                  key={st.k}
+                  href={st.href}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow ugc"
+                  className="stb hover:brightness-95 cursor-pointer"
+                  style={{ '--sc': STORES[st.k].col } as React.CSSProperties}
+                >
+                  <span className="stdot" />
+                  <span>{STORES[st.k].label}</span>
+                  <Icon name="external" size={12} />
+                </a>
+              ))}
+            </div>
+          )}
+
+          {hasRepo && !detectedStores.some((x) => x.k === 'github') && (
             <a
               className="btn out lg cursor-pointer"
               href={launch.repo}
@@ -307,9 +329,10 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
               ? launch.shots.map((img, i) => (
                   <img
                     key={i}
-                    className="shotimg"
+                    className="shotimg cursor-pointer hover:brightness-105 transition-all"
                     src={img}
                     alt={`Screenshot ${i + 1} of ${launch.name}`}
+                    onClick={() => openLightbox(launch.shots || [], i)}
                   />
                 ))
               : [0, 1, 2, 3].map((i) => renderSampleShot(i))}

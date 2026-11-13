@@ -407,6 +407,64 @@ export function BrunchSheets() {
           );
         })()}
 
+        {/* Notifications Sheet */}
+        {activeSheet.type === 'notif' && (
+          <>
+            <div className="sh-h mb-2">
+              <span className="avatar lg bg-[var(--accent)] text-[var(--on-accent)]">
+                <Icon name="bell" size={24} />
+              </span>
+              <div>
+                <b className="text-lg">Notifications</b>
+                <span className="text-xs text-[var(--fg-2)] block">
+                  Activity on your launches, posts and profile
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto my-2">
+              <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center flex-none">
+                  <Icon name="up" size={16} />
+                </div>
+                <div className="text-xs">
+                  <span className="font-bold text-[var(--fg)]">Someone upvoted your launch</span>
+                  <p className="text-[var(--fg-2)] mt-0.5">Your project is trending in Top Charts</p>
+                  <span className="text-[10px] text-[var(--fg-2)] opacity-70">10m ago</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center flex-none">
+                  <Icon name="comment" size={16} />
+                </div>
+                <div className="text-xs">
+                  <span className="font-bold text-[var(--fg)]">New comment on your post</span>
+                  <p className="text-[var(--fg-2)] mt-0.5">Marcus L.: &quot;Really loved the clean mechanics!&quot;</p>
+                  <span className="text-[10px] text-[var(--fg-2)] opacity-70">2h ago</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center flex-none">
+                  <Icon name="heart" size={16} />
+                </div>
+                <div className="text-xs">
+                  <span className="font-bold text-[var(--fg)]">New follower</span>
+                  <p className="text-[var(--fg-2)] mt-0.5">Aiko T. started following your work</p>
+                  <span className="text-[10px] text-[var(--fg-2)] opacity-70">1d ago</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="sh-row">
+              <button className="btn fill" onClick={closeSheet}>
+                Close
+              </button>
+            </div>
+          </>
+        )}
+
         {/* Rank Info Sheet */}
         {activeSheet.type === 'rankinfo' && (
           <>

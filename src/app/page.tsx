@@ -13,6 +13,8 @@ import { FeedView } from '@/components/feed/FeedView';
 import { ChartsView } from '@/components/feed/ChartsView';
 import { CategoriesView } from '@/components/feed/CategoriesView';
 import { CreatorsView } from '@/components/feed/CreatorsView';
+import { ExploreView } from '@/components/explore/ExploreView';
+import { ChatView } from '@/components/chat/ChatViews';
 
 import { LaunchDetail } from '@/components/launch/LaunchDetail';
 import { LaunchForm } from '@/components/launch/LaunchForm';
@@ -31,6 +33,7 @@ import { SavedView } from '@/components/saved/SavedView';
 import { MakerView } from '@/components/creator/MakerView';
 import { CollectionView } from '@/components/common/CollectionView';
 import { CommunityAvatar } from '@/components/community/CommunityFeed';
+import { Lightbox, ShareModal, CreateMenuSheet } from '@/components/modals/MediaModals';
 import { fmtN } from '@/data/seed';
 import { Icon } from '@/components/icons/Icons';
 
@@ -40,7 +43,21 @@ function AppContent() {
     setMounted(true);
   }, []);
 
-  const { currentRoute, subs, allCommunities, forumEngagement, toggleJoinCommunity, go } = useBrunch();
+  const {
+    currentRoute,
+    subs,
+    allCommunities,
+    forumEngagement,
+    toggleJoinCommunity,
+    go,
+    toast,
+    lightbox,
+    closeLightbox,
+    shareLaunch,
+    closeShareLaunch,
+    createMenuOpen,
+    closeCreateMenu,
+  } = useBrunch();
 
   if (!mounted) {
     return (
@@ -53,7 +70,15 @@ function AppContent() {
   const renderMain = () => {
     switch (currentRoute.t) {
       case 'tab': {
+        if (currentRoute.tab === 'explore') {
+          return <ExploreView />;
+        }
+
         if (currentRoute.tab === 'community') {
+          if (subs.community === 'messages') {
+            return <ChatView />;
+          }
+
           if (subs.community === 'explore') {
             const list = [...allCommunities].sort(
               (a, b) =>
@@ -109,7 +134,7 @@ function AppContent() {
           return <CommunityFeed />;
         }
 
-        const currentSub = subs[currentRoute.tab];
+        const currentSub = (subs as Record<string, string>)[currentRoute.tab];
         if (currentSub === 'foryou') return <FeedView tab={currentRoute.tab} />;
         if (currentSub === 'charts') return <ChartsView tab={currentRoute.tab} />;
         if (currentSub === 'creators') return <CreatorsView />;
@@ -117,6 +142,10 @@ function AppContent() {
         return <FeedView tab={currentRoute.tab} />;
       }
 
+      case 'me':
+        return <MakerView makerKey="me" />;
+      case 'chat':
+        return <ChatView communityId={currentRoute.cid} initialChannel={currentRoute.ch} />;
       case 'launch':
         return <LaunchDetail launchId={currentRoute.id} />;
       case 'dash':
@@ -163,6 +192,36 @@ function AppContent() {
       <BrunchSheets />
       <AuthModal />
       <Toast />
+
+      {/* Lightbox Modal */}
+      {lightbox && (
+        <Lightbox
+          images={lightbox.images}
+          initialIndex={lightbox.index}
+          onClose={closeLightbox}
+        />
+      )}
+
+      {/* Share Card Modal */}
+      {shareLaunch && (
+        <ShareModal
+          launch={shareLaunch}
+          onClose={closeShareLaunch}
+          onToast={toast}
+        />
+      )}
+
+      {/* Mobile Create Menu Sheet */}
+      {createMenuOpen && (
+        <CreateMenuSheet
+          onClose={closeCreateMenu}
+          onAction={(act) => {
+            if (act === 'launch') go({ t: 'submit' });
+            else if (act === 'comm') go({ t: 'newcomm' });
+            else if (act === 'post') go({ t: 'newpost' });
+          }}
+        />
+      )}
     </div>
   );
 }

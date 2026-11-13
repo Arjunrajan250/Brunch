@@ -1,64 +1,81 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { Icon } from '@/components/icons/Icons';
-import { TABS } from '@/data/seed';
 import { MainTab } from '@/types/brunch';
 
 export function BottomNav() {
-  const { currentRoute, activeTab, setTab, go } = useBrunch();
-  const [compact, setCompact] = useState(false);
+  const { currentRoute, activeTab, setTab, go, openCreateMenu } = useBrunch();
 
-  useEffect(() => {
-    let lastY = window.scrollY;
-    const handleScroll = () => {
-      const y = window.scrollY;
-      setCompact(y > 120 && y > lastY - 2);
-      lastY = y;
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const isTop = currentRoute.t === 'tab' || currentRoute.t === 'saved';
-  const isCommunity = currentRoute.t === 'tab' && currentRoute.tab === 'community';
+  const isHome = currentRoute.t === 'tab' && activeTab === 'home';
+  const isExplore = currentRoute.t === 'tab' && activeTab === 'explore';
+  const isCommunity = currentRoute.t === 'tab' && activeTab === 'community';
+  const isMe = currentRoute.t === 'me' || (currentRoute.t === 'saved' && currentRoute.sub === 'mine');
 
   return (
-    <>
-      <nav className="bnav" aria-label="Primary">
-        <div className="bnav-in">
-          {(Object.keys(TABS) as MainTab[]).map((tabKey) => {
-            const tab = TABS[tabKey];
-            const isActive = currentRoute.t === 'tab' && activeTab === tabKey;
-            return (
-              <button
-                key={tabKey}
-                className="ni"
-                onClick={() => setTab(tabKey)}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <span className="pill">
-                  <Icon name={tab.icon} size={22} />
-                </span>
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-
-      {isTop && (
+    <nav className="bnav" aria-label="Primary">
+      <div className="bnav-in" id="bnav-in">
+        {/* Home */}
         <button
-          className={`fab ${compact ? 'compact' : ''}`}
-          onClick={() => (isCommunity ? go({ t: 'newpost' }) : go({ t: 'submit' }))}
-          aria-label={isCommunity ? 'New post' : 'Launch yours'}
+          className="ni"
+          onClick={() => setTab('home')}
+          aria-current={isHome ? 'page' : undefined}
         >
-          <Icon name="plus" size={24} />
-          <span>{isCommunity ? 'Post' : 'Launch'}</span>
+          <span className="pill">
+            <Icon name="home" size={22} />
+          </span>
+          <span>Home</span>
         </button>
-      )}
-    </>
+
+        {/* Explore */}
+        <button
+          className="ni"
+          onClick={() => setTab('explore')}
+          aria-current={isExplore ? 'page' : undefined}
+        >
+          <span className="pill">
+            <Icon name="compass" size={22} />
+          </span>
+          <span>Explore</span>
+        </button>
+
+        {/* Raised Add Button */}
+        <div className="addw">
+          <button
+            className="add"
+            onClick={openCreateMenu}
+            aria-label="Create something new"
+            aria-haspopup="dialog"
+          >
+            <Icon name="plus" size={26} />
+          </button>
+        </div>
+
+        {/* Community */}
+        <button
+          className="ni"
+          onClick={() => setTab('community')}
+          aria-current={isCommunity ? 'page' : undefined}
+        >
+          <span className="pill">
+            <Icon name="users" size={22} />
+          </span>
+          <span>Community</span>
+        </button>
+
+        {/* Profile */}
+        <button
+          className="ni"
+          onClick={() => go({ t: 'me', sub: 'launches' })}
+          aria-current={isMe ? 'page' : undefined}
+        >
+          <span className="pill">
+            <Icon name="user" size={22} />
+          </span>
+          <span>Profile</span>
+        </button>
+      </div>
+    </nav>
   );
 }
-

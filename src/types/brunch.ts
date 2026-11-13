@@ -14,12 +14,14 @@ export interface Launch {
   type: LaunchType;
   url: string;
   repo?: string;
+  links?: string[]; // multiple store/external links
   plats: PlatformKey[];
   tags: string[];
   desc: string;
   maker: string;
   bio?: string;
   social?: string;
+  cid?: string; // linked community ID
   glyph: string;
   hue: number;
   icon?: string;
@@ -42,6 +44,9 @@ export interface Community {
   ts: number;
   sample?: boolean;
   base?: number;
+  rules?: string[];
+  pin?: string;
+  banned?: Record<string, number>;
 }
 
 export interface Post {
@@ -66,6 +71,24 @@ export interface CommentItem {
   uid?: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  name: string;
+  text: string;
+  ts: number;
+  uid: string;
+  sample?: boolean;
+}
+
+export interface NotificationItem {
+  id: string;
+  type: 'vote' | 'try' | 'post' | 'comment' | 'follow';
+  text: string;
+  ts: number;
+  read: boolean;
+  targetId?: string;
+}
+
 export interface EngagementState {
   votes: Record<string, number>;
   clicks: Record<string, number>;
@@ -86,6 +109,9 @@ export interface Maker {
   name: string;
   bio: string;
   social: string;
+  socials?: string[];
+  pic?: string;
+  ban?: string;
   support: SupportLink[];
   sample: boolean;
   uid?: string;
@@ -97,11 +123,36 @@ export interface Maker {
   score: number;
 }
 
-export type MainTab = 'home' | 'games' | 'apps' | 'tools' | 'community';
-export type HomeSubTab = 'foryou' | 'charts' | 'creators' | 'cats';
-export type TypeSubTab = 'foryou' | 'charts' | 'cats';
-export type CommunitySubTab = 'feed' | 'explore';
+export type MainTab = 'home' | 'explore' | 'community' | 'games' | 'apps' | 'tools';
+export type HomeSubTab = 'foryou' | 'charts' | 'creators';
+export type TypeSubTab = 'foryou' | 'charts';
+export type CommunitySubTab = 'feed' | 'explore' | 'messages';
 export type ChartKind = 'hot' | 'new' | 'top' | 'tried';
 export type CreatorRankKind = 'score' | 'votes' | 'fol' | 'hot';
 export type MetricType = 'views' | 'clicks' | 'votes' | 'saves';
 
+export type StoreKey =
+  | 'github'
+  | 'gitlab'
+  | 'play'
+  | 'appstore'
+  | 'testflight'
+  | 'msstore'
+  | 'steam'
+  | 'epic'
+  | 'itch'
+  | 'chrome'
+  | 'firefox'
+  | 'fdroid'
+  | 'hf'
+  | 'npm'
+  | 'pypi';
+
+export interface StoreDef {
+  label: string;
+  cta: string;
+  sec?: string;
+  ic: string;
+  col: string;
+  plat?: PlatformKey;
+}
