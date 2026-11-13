@@ -197,3 +197,4 @@ export function storesOf(l: Partial<Launch>): { href: string; host: string; k: S
 export function hasStore(l: Partial<Launch>, k: StoreKey): boolean {
   return storesOf(l).some((x) => x.k === k);
 }
+
