@@ -284,10 +284,12 @@ export const ago = (ts: number) => {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-export const votes = (l: Launch, cv: Record<string, number> = {}) => (l.base || 0) + (cv[l.id] || 0);
-export const tries = (l: Launch, cc: Record<string, number> = {}) => (l.tried || 0) + (cc[l.id] || 0);
-export const views = (l: Launch, cw: Record<string, number> = {}) => cw[l.id] || 0;
-export const saves = (l: Launch, cs: Record<string, number> = {}) => cs[l.id] || 0;
+const interaction = (state: Record<string, number>, id: string) => state[id] ? 1 : 0;
+
+export const votes = (l: Launch, cv: Record<string, number> = {}) => (l.base || 0) + interaction(cv, l.id);
+export const tries = (l: Launch, cc: Record<string, number> = {}) => (l.tried || 0) + interaction(cc, l.id);
+export const views = (l: Launch, cw: Record<string, number> = {}) => (l.viewCount || 0) + interaction(cw, l.id);
+export const saves = (l: Launch, cs: Record<string, number> = {}) => (l.saveCount || 0) + interaction(cs, l.id);
 export const hot = (l: Launch, cv: Record<string, number> = {}, now?: number) =>
   (votes(l, cv) + 1) / Math.pow(((now ?? (typeof window !== 'undefined' ? Date.now() : BASE_NOW)) - l.ts) / DAY + 2, 1.3);
 
@@ -296,11 +298,16 @@ export const sortNew = (l: Launch[]) => l.slice().sort((a, b) => b.ts - a.ts);
 export const sortTop = (l: Launch[], cv: Record<string, number> = {}) => l.slice().sort((a, b) => votes(b, cv) - votes(a, cv));
 export const sortTried = (l: Launch[], cc: Record<string, number> = {}) => l.slice().sort((a, b) => tries(b, cc) - tries(a, cc));
 
-export const isGH = (l: Launch) => !!(l.repo || (parseUrl(l.url).host === 'github.com'));
-export const ghHref = (l: Launch) => l.repo || (parseUrl(l.url).host === 'github.com' ? l.url : '');
+const githubUrl = (raw?: string) => {
+  const parsed = parseUrl(raw || '');
+  return parsed.ok && parsed.host === 'github.com' ? parsed.href : '';
+};
+
+export const ghHref = (l: Launch) => githubUrl(l.repo) || githubUrl(l.url);
+export const isGH = (l: Launch) => Boolean(ghHref(l));
 export const platText = (l: Launch) => l.plats.map(p => PLAT[p] || p).join(', ');
 
-export const followers = (key: string, cf: Record<string, number> = {}) => (SAMPLE_FOL[key] || 0) + (cf[key] || 0);
+export const followers = (key: string, cf: Record<string, number> = {}) => (SAMPLE_FOL[key] || 0) + (cf[key] ? 1 : 0);
 
 export function getMakersList(allLaunches: Launch[], cv: Record<string, number> = {}, cc: Record<string, number> = {}, cf: Record<string, number> = {}) {
   const m = new Map<string, { key: string; name: string; bio: string; social: string; support: SupportLink[]; sample: boolean; uid?: string; list: Launch[]; votes: number; tries: number; hot: number; fol: number; score: number }>();
@@ -311,7 +318,7 @@ export function getMakersList(allLaunches: Launch[], cv: Record<string, number> 
       name: l.maker,
       bio: l.bio || '',
       social: l.social || '',
-      support: (l.sample ? (SAMPLE_SUPPORT[Object.keys(MAKERS).find(k => MAKERS[k][0] === l.maker) || ''] || []) : []),
+      support: (l.sample ? (SAMPLE_SUPPORT[Object.keys(MAKERS).find(k => MAKERS[k][0] === l.maker) || ''] || []) : (l.support || [])),
       sample: !!l.sample,
       uid: l.uid,
       list: [],
@@ -328,7 +335,9 @@ export function getMakersList(allLaunches: Launch[], cv: Record<string, number> 
     m.set(mkKey, existing);
   });
   m.forEach(e => {
-    e.fol = followers(e.key, cf);
+    e.fol = e.sample
+      ? followers(e.key, cf)
+      : (e.list[0]?.followerCount || 0) + (cf[e.key] ? 1 : 0);
     e.score = Math.round(e.votes + 0.3 * e.tries + 1.5 * e.fol);
   });
   return [...m.values()].sort((a, b) => b.score - a.score || b.votes - a.votes);

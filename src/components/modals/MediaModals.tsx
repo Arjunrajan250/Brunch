@@ -1,8 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { Icon } from '@/components/icons/Icons';
 import { Launch } from '@/types/brunch';
+import { copyText } from '@/lib/clipboard';
+import { routeToUrl } from '@/lib/navigation';
 
 export function Lightbox({
   images,
@@ -13,22 +16,40 @@ export function Lightbox({
   initialIndex?: number;
   onClose: () => void;
 }) {
-  const [index, setIndex] = useState(initialIndex);
+  const [index, setIndex] = useState(() => Math.max(0, Math.min(initialIndex, images.length - 1)));
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (images.length < 2) return;
+      if (event.key === 'ArrowLeft') setIndex((previous) => (previous > 0 ? previous - 1 : images.length - 1));
+      if (event.key === 'ArrowRight') setIndex((previous) => (previous < images.length - 1 ? previous + 1 : 0));
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [images.length, onClose]);
 
   if (!images || images.length === 0) return null;
 
-  const current = images[index];
+  const currentIndex = Math.max(0, Math.min(index, images.length - 1));
+  const current = images[currentIndex];
 
   return (
     <div
       className="lbx animate-fade-in"
       role="dialog"
       aria-modal="true"
+      aria-label="Screenshot viewer"
       onClick={onClose}
     >
       <div className="absolute top-4 right-4 flex items-center gap-3 z-10">
         <span className="text-white/70 text-sm font-semibold">
-          {index + 1} / {images.length}
+          {currentIndex + 1} / {images.length}
         </span>
         <button
           onClick={onClose}
@@ -43,10 +64,13 @@ export function Lightbox({
         className="relative max-w-4xl max-h-[85vh] p-4 flex items-center justify-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <img
+        <Image
           src={current}
-          alt={`Screenshot ${index + 1}`}
-          className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
+          width={1600}
+          height={1000}
+          unoptimized
+          alt={`Screenshot ${currentIndex + 1}`}
+          className="max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-xl shadow-2xl"
         />
 
         {images.length > 1 && (
@@ -84,21 +108,45 @@ export function ShareModal({
   onToast: (msg: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const shareUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/?launch=${launch.id}`
-    : `https://brunch.so/?launch=${launch.id}`;
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl);
+  const shareUrl = new URL(routeToUrl({ t: 'launch', id: launch.id }), typeof window !== 'undefined' ? window.location.origin : 'https://brunch.so').href;
+
+  const handleCopy = async () => {
+    const success = await copyText(shareUrl);
+    if (!success) {
+      onToast('Could not copy automatically. Select the link and copy it manually.');
+      return;
+    }
     setCopied(true);
     onToast('Link copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleNativeShare = async () => {
+    if (!navigator.share) {
+      await handleCopy();
+      return;
+    }
+    try {
+      await navigator.share({ title: launch.name, text: launch.tag, url: shareUrl });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      onToast(`Could not open sharing options: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
   };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Share ${launch.name}`}
       onClick={onClose}
     >
       <div
@@ -112,6 +160,7 @@ export function ShareModal({
           <button
             onClick={onClose}
             className="p-1.5 text-[var(--fg-2)] hover:text-[var(--fg)] rounded-lg"
+            aria-label="Close share dialog"
           >
             <Icon name="close" size={18} />
           </button>
@@ -140,7 +189,7 @@ export function ShareModal({
             className="flex-1 bg-transparent border-0 text-xs text-[var(--fg)] outline-none select-all"
           />
           <button
-            onClick={handleCopy}
+            onClick={() => void handleCopy()}
             className="btn fill sm text-xs px-3 py-1.5 flex items-center gap-1.5"
           >
             <Icon name={copied ? 'check' : 'copy'} size={14} />
@@ -160,17 +209,7 @@ export function ShareModal({
             <span>Share on X</span>
           </a>
           <button
-            onClick={() => {
-              if (navigator.share) {
-                navigator.share({
-                  title: launch.name,
-                  text: launch.tag,
-                  url: shareUrl,
-                }).catch(() => {});
-              } else {
-                handleCopy();
-              }
-            }}
+            onClick={() => void handleNativeShare()}
             className="btn out sm flex items-center justify-center gap-2 text-xs"
           >
             <Icon name="external" size={14} />

@@ -30,6 +30,10 @@ export interface Launch {
   ts: number;
   base?: number;
   tried?: number;
+  viewCount?: number;
+  saveCount?: number;
+  followerCount?: number;
+  support?: SupportLink[];
   sample?: boolean;
 }
 

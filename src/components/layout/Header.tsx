@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { BrunchLogo, Icon } from '@/components/icons/Icons';
 import { SUBS } from '@/data/seed';
@@ -9,7 +9,6 @@ import { MainTab } from '@/types/brunch';
 export function Header() {
   const {
     currentRoute,
-    activeTab,
     setTab,
     subs,
     setSubTab,
@@ -27,6 +26,26 @@ export function Header() {
   } = useBrunch();
 
   const [scrolled, setScrolled] = useState(false);
+  const [searchDraft, setSearchDraft] = useState(currentRoute.t === 'search' ? currentRoute.q : '');
+  const pendingSearch = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (currentRoute.t !== 'search') {
+      pendingSearch.current = null;
+      return;
+    }
+    // Ignore older committed URLs while replace() catches up with typing.
+    if (pendingSearch.current !== null && currentRoute.q !== pendingSearch.current) return;
+    pendingSearch.current = null;
+    setSearchDraft(currentRoute.q);
+  }, [currentRoute]);
+
+  const updateSearch = (query: string) => {
+    if (currentRoute.t !== 'search') return;
+    pendingSearch.current = query;
+    setSearchDraft(query);
+    go({ t: 'search', q: query, f: currentRoute.f }, { replace: true });
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -200,14 +219,14 @@ export function Header() {
               enterKeyHint="search"
               placeholder="Search launches, creators and communities"
               aria-label="Search launches, creators and communities"
-              value={currentRoute.q}
-              onChange={(e) => go({ t: 'search', q: e.target.value, f: currentRoute.f })}
+              value={searchDraft}
+              onChange={(e) => updateSearch(e.target.value)}
               autoFocus
             />
-            {currentRoute.q && (
+            {searchDraft && (
               <button
                 className="ib"
-                onClick={() => go({ t: 'search', q: '', f: currentRoute.f })}
+                onClick={() => updateSearch('')}
                 aria-label="Clear"
               >
                 <Icon name="close" size={20} />

@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useBrunch } from '@/context/BrunchContext';
 import {
   TYPE,
   PLAT,
-  SUP,
   fmtN,
   ago,
   isGH,
@@ -18,7 +18,7 @@ import {
   followers as calcFollowers,
   rng,
 } from '@/data/seed';
-import { storesOf, linksOf, STORES } from '@/data/stores';
+import { storesOf, STORES } from '@/data/stores';
 import {
   Carousel,
   GitHubBadge,
@@ -29,7 +29,6 @@ import {
   VoteButton,
 } from '@/components/common/LaunchComponents';
 import { Glyph, Icon } from '@/components/icons/Icons';
-import { Launch } from '@/types/brunch';
 
 export function LaunchDetail({ launchId }: { launchId: string }) {
   const {
@@ -46,17 +45,18 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
     toast,
     openLightbox,
     openShareLaunch,
+    canManageLaunch,
   } = useBrunch();
 
   const [commentText, setCommentText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
   const launch = allLaunches.find((x) => x.id === launchId);
+  const viewedLaunchId = launch?.id;
 
   useEffect(() => {
-    if (launch) {
-      recordView(launch.id);
-    }
-  }, [launch, recordView]);
+    if (viewedLaunchId) void recordView(viewedLaunchId);
+  }, [viewedLaunchId, recordView]);
 
   if (!launch) {
     return (
@@ -72,13 +72,15 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
   }
 
   const isSaved = !!engagement.saves[launch.id];
-  const isOwner = !launch.sample; // In local prototype / dev mode
+  const isOwner = canManageLaunch(launch);
   const makerKey = launch.sample
     ? 's:' + launch.maker.toLowerCase().split(' ')[0]
     : launch.uid || 'n:' + launch.maker;
 
   const isFollowing = !!engagement.follows[makerKey];
-  const followerCount = calcFollowers(makerKey, engagement.follows);
+  const followerCount = launch.sample
+    ? calcFollowers(makerKey, engagement.follows)
+    : (launch.followerCount || 0) + (isFollowing ? 1 : 0);
 
   const typeInfo = TYPE[launch.type] || { label: 'App', plural: 'Apps', glyph: 'grid', hue: 175 };
   const parsedLaunchUrl = parseUrl(launch.url);
@@ -161,11 +163,18 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
     );
   };
 
-  const handleCommentSubmit = (e: React.FormEvent) => {
+  const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
-    postComment(launch.id, 'launch', commentText.trim().slice(0, 280));
-    setCommentText('');
+    if (!commentText.trim() || commentSubmitting) return;
+    setCommentSubmitting(true);
+    try {
+      const posted = await postComment(launch.id, 'launch', commentText);
+      if (posted) setCommentText('');
+    } catch (error) {
+      toast(`Comment not posted: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setCommentSubmitting(false);
+    }
   };
 
   const handleShare = () => {
@@ -327,15 +336,20 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
           <div className="shots">
             {launch.shots && launch.shots.length > 0
               ? launch.shots.map((img, i) => (
-                  <img
-                    key={i}
-                    className="shotimg cursor-pointer hover:brightness-105 transition-all"
-                    src={img}
-                    alt={`Screenshot ${i + 1} of ${launch.name}`}
-                    onClick={() => openLightbox(launch.shots || [], i)}
-                  />
+                  <button key={i} type="button" onClick={() => openLightbox(launch.shots || [], i)} aria-label={`View screenshot ${i + 1}`}>
+                    <Image
+                      className="shotimg cursor-pointer hover:brightness-105 transition-all"
+                      src={img}
+                      width={1280}
+                      height={720}
+                      unoptimized
+                      alt={`Screenshot ${i + 1} of ${launch.name}`}
+                    />
+                  </button>
                 ))
-              : [0, 1, 2, 3].map((i) => renderSampleShot(i))}
+              : launch.sample
+                ? [0, 1, 2, 3].map((i) => renderSampleShot(i))
+                : <div className="box text-[var(--fg-2)]">No screenshots have been added.</div>}
           </div>
         </section>
 
@@ -418,18 +432,20 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
         </section>
 
         {/* Support */}
-        <section>
-          <div className="sec-h">
-            <h2 className="h2">Support {launch.maker}</h2>
-          </div>
-          <button
-            className="btn out w-full py-3"
-            onClick={() => openSheet({ type: 'support', key: makerKey })}
-          >
-            <Icon name="heart" size={18} />
-            <span>Ways to support {launch.maker}</span>
-          </button>
-        </section>
+        {(launch.sample || (launch.support?.length || 0) > 0) && (
+          <section>
+            <div className="sec-h">
+              <h2 className="h2">Support {launch.maker}</h2>
+            </div>
+            <button
+              className="btn out w-full py-3"
+              onClick={() => openSheet({ type: 'support', key: makerKey })}
+            >
+              <Icon name="heart" size={18} />
+              <span>Ways to support {launch.maker}</span>
+            </button>
+          </section>
+        )}
 
         {/* Feedback Section */}
         <section>
@@ -451,8 +467,8 @@ export function LaunchDetail({ launchId }: { launchId: string }) {
               <span className="cnt">{commentText.length} / 280</span>
             </div>
             <div className="formbar">
-              <button className="btn fill sm" type="submit">
-                Post
+              <button className="btn fill sm" type="submit" disabled={commentSubmitting || !commentText.trim()} aria-busy={commentSubmitting}>
+                {commentSubmitting ? 'Posting…' : 'Post'}
               </button>
             </div>
           </form>

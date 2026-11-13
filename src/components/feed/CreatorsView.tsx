@@ -14,6 +14,13 @@ const RANKS: [CreatorRankKind, string][] = [
   ['hot', 'Rising'],
 ];
 
+const RANK_UNITS: Record<CreatorRankKind, string> = {
+  score: 'pts',
+  votes: 'upvotes',
+  fol: 'followers',
+  hot: 'rising pts',
+};
+
 export function CreatorsView() {
   const {
     allLaunches,
@@ -79,6 +86,10 @@ export function CreatorsView() {
             if (!maker) return null;
             const rankNum = idx + 1;
             const isFirst = rankNum === 1;
+            const rankValue = maker[creatorRankKind];
+            const formattedRank = creatorRankKind === 'hot'
+              ? rankValue.toFixed(1).replace(/\.0$/, '')
+              : fmtN(rankValue);
 
             return (
               <button
@@ -93,12 +104,12 @@ export function CreatorsView() {
                   size={isFirst ? 76 : 56}
                 />
                 <b>{maker.name}</b>
-                {creatorRankKind === 'score' ? (
-                  <span className="mt pts">{fmtN(maker.score)} pts</span>
-                ) : (
-                  <span className="mt">{fmtN(maker.votes)} upvotes</span>
+                <span className="mt pts">
+                  {formattedRank} {RANK_UNITS[creatorRankKind]}
+                </span>
+                {creatorRankKind !== 'fol' && (
+                  <span className="mt">{fmtN(maker.fol)} followers</span>
                 )}
-                <span className="mt">{fmtN(maker.fol)} followers</span>
               </button>
             );
           })}

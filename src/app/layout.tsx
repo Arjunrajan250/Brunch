@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Figtree, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { SvgDefs } from "@/components/icons/Icons";
+import { BrunchProvider } from "@/context/BrunchContext";
 
 const figtree = Figtree({
   subsets: ["latin"],
@@ -40,7 +42,9 @@ export default function RootLayout({
       </head>
       <body>
         <SvgDefs />
-        {children}
+        <Suspense fallback={null}>
+          <BrunchProvider>{children}</BrunchProvider>
+        </Suspense>
       </body>
     </html>
   );

@@ -6,6 +6,9 @@ import { fmtN, ago, parseUrl, GLYPHS, HUES } from '@/data/seed';
 import { CommunityAvatar, PostCard, PostVotingPill } from './CommunityFeed';
 import { Glyph, Icon } from '@/components/icons/Icons';
 import { MakerAvatar } from '@/components/common/LaunchComponents';
+import { copyText } from '@/lib/clipboard';
+import { routeToUrl } from '@/lib/navigation';
+import { sortPosts } from '@/lib/posts';
 
 export const COMMUNITY_GUIDELINES = (
   <div className="box">
@@ -38,7 +41,7 @@ export function CommunityDetail({ communityId }: { communityId: string }) {
   }
 
   const isJoined = !!forumEngagement.joined[community.id];
-  const posts = allPosts.filter((p) => p.cid === community.id);
+  const posts = sortPosts(allPosts.filter((p) => p.cid === community.id), forumEngagement, forumSort);
 
   const aboutBox = (
     <div className="box">
@@ -151,8 +154,9 @@ export function CommunityDetail({ communityId }: { communityId: string }) {
 
 // Individual Post Thread View
 export function PostDetail({ postId }: { postId: string }) {
-  const { allPosts, allCommunities, go, openSheet, getComments, postComment, toast } = useBrunch();
+  const { allPosts, allCommunities, forumEngagement, go, openSheet, getComments, postComment, toast, canManagePost } = useBrunch();
   const [commentText, setCommentText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
   const post = allPosts.find((p) => p.id === postId);
 
@@ -173,18 +177,24 @@ export function PostDetail({ postId }: { postId: string }) {
   const linkParsed = post.link ? parseUrl(post.link) : null;
   const comments = getComments(post.id, 'post');
 
-  const handleCommentSubmit = (e: React.FormEvent) => {
+  const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
-    postComment(post.id, 'post', commentText.trim().slice(0, 280));
-    setCommentText('');
+    if (!commentText.trim() || commentSubmitting) return;
+    setCommentSubmitting(true);
+    try {
+      const posted = await postComment(post.id, 'post', commentText);
+      if (posted) setCommentText('');
+    } catch (error) {
+      toast(`Comment not posted: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setCommentSubmitting(false);
+    }
   };
 
-  const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(`${post.title} (b/${community?.slug || 'brunch'})`);
-      toast('Copied link');
-    }
+  const handleShare = async () => {
+    const url = new URL(routeToUrl({ t: 'post', id: post.id }), window.location.origin).href;
+    const copied = await copyText(url);
+    toast(copied ? 'Post link copied' : 'Could not copy the link. Copy it from the address bar instead.');
   };
 
   return (
@@ -244,7 +254,7 @@ export function PostDetail({ postId }: { postId: string }) {
             <Icon name="flag" size={16} />
             <span>Report</span>
           </button>
-          {!post.sample && (
+          {canManagePost(post) && (
             <button
               className="pill-b cursor-pointer text-[var(--danger)]"
               onClick={() => openSheet({ type: 'deletePost', id: post.id })}
@@ -274,8 +284,8 @@ export function PostDetail({ postId }: { postId: string }) {
               <span className="cnt">{commentText.length} / 280</span>
             </div>
             <div className="formbar">
-              <button className="btn fill sm" type="submit">
-                Comment
+              <button className="btn fill sm" type="submit" disabled={commentSubmitting || !commentText.trim()} aria-busy={commentSubmitting}>
+                {commentSubmitting ? 'Posting…' : 'Comment'}
               </button>
             </div>
           </form>
@@ -305,7 +315,7 @@ export function PostDetail({ postId }: { postId: string }) {
           <div className="box">
             <b>b/{community.slug}</b>
             <p className="text-[var(--fg-2)]">{community.about || community.title}</p>
-            <p className="count">{fmtN(community.base || 1)} members</p>
+            <p className="count">{fmtN((community.base || 0) + (forumEngagement.joined[community.id] ? 1 : 0))} members</p>
           </div>
         )}
         {COMMUNITY_GUIDELINES}
@@ -325,9 +335,11 @@ export function NewCommunityForm() {
   const [hue, setHue] = useState(205);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     const newErrors: Record<string, string> = {};
     const cleanSlug = slug.trim().toLowerCase();
 
@@ -352,15 +364,21 @@ export function NewCommunityForm() {
       return;
     }
 
-    const newId = createCommunityItem({
-      slug: cleanSlug,
-      title: title.trim(),
-      about: about.trim(),
-      glyph,
-      hue,
-    });
-
-    go({ t: 'comm', id: newId });
+    setSubmitting(true);
+    try {
+      const newId = await createCommunityItem({
+        slug: cleanSlug,
+        title: title.trim(),
+        about: about.trim(),
+        glyph,
+        hue,
+      });
+      if (newId) go({ t: 'comm', id: newId }, { replace: true });
+    } catch (error) {
+      toast(`Community not created: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const previewCommunity = {
@@ -371,7 +389,7 @@ export function NewCommunityForm() {
     glyph,
     hue,
     uid: 'user',
-    ts: Date.now(),
+    ts: 0,
   };
 
   return (
@@ -469,8 +487,8 @@ export function NewCommunityForm() {
       </div>
 
       <div className="formbar">
-        <button className="btn fill lg" type="submit">
-          Create community
+        <button className="btn fill lg" type="submit" disabled={submitting} aria-busy={submitting}>
+          {submitting ? 'Creating…' : 'Create community'}
         </button>
         <span className="fine">Free. You become the first member.</span>
       </div>
@@ -488,12 +506,14 @@ export function NewPostForm({ initialCommunityId }: { initialCommunityId?: strin
   const [link, setLink] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     const newErrors: Record<string, string> = {};
 
-    if (!cid) newErrors.cid = 'Pick a community';
+    if (!allCommunities.some((community) => community.id === cid)) newErrors.cid = 'Pick an available community';
     if (title.trim().length < 3) newErrors.title = 'Add a title of at least 3 characters';
     if (!body.trim() && !link.trim()) newErrors.body = 'Add some text or a link';
 
@@ -509,14 +529,20 @@ export function NewPostForm({ initialCommunityId }: { initialCommunityId?: strin
       return;
     }
 
-    const newId = createPostItem({
-      cid,
-      title: title.trim(),
-      body: body.trim(),
-      link: link.trim(),
-    });
-
-    go({ t: 'post', id: newId });
+    setSubmitting(true);
+    try {
+      const newId = await createPostItem({
+        cid,
+        title: title.trim(),
+        body: body.trim(),
+        link: link.trim() ? parseUrl(link).href : '',
+      });
+      if (newId) go({ t: 'post', id: newId }, { replace: true });
+    } catch (error) {
+      toast(`Post not published: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -581,8 +607,8 @@ export function NewPostForm({ initialCommunityId }: { initialCommunityId?: strin
       </div>
 
       <div className="formbar">
-        <button className="btn fill lg" type="submit">
-          Post
+        <button className="btn fill lg" type="submit" disabled={submitting || !allCommunities.length} aria-busy={submitting}>
+          {submitting ? 'Publishing…' : allCommunities.length ? 'Post' : 'Create a community first'}
         </button>
       </div>
     </form>

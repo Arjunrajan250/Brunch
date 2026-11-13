@@ -50,6 +50,7 @@ export interface Database {
           type: 'game' | 'app' | 'tool';
           url: string;
           repo: string;
+          links: string[];
           plats: string[];
           tags: string[];
           desc: string;
@@ -73,6 +74,7 @@ export interface Database {
           type: 'game' | 'app' | 'tool';
           url: string;
           repo?: string;
+          links?: string[];
           plats?: string[];
           tags?: string[];
           desc?: string;
@@ -96,6 +98,7 @@ export interface Database {
           type?: 'game' | 'app' | 'tool';
           url?: string;
           repo?: string;
+          links?: string[];
           plats?: string[];
           tags?: string[];
           desc?: string;

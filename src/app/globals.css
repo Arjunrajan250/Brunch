@@ -43,6 +43,7 @@ ul{padding:0;list-style:none}
 .searchbar:hover{background:var(--surface);box-shadow:inset 0 0 0 1px var(--accent-line),0 3px 14px rgba(80,62,0,.09)}
 .searchbar .i{color:var(--ink)}
 .searchbar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.searchbar .sl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .searchbar .kbd{display:none}
 .kbd{flex:none;margin-left:auto;min-width:24px;height:24px;padding:0 7px;border-radius:7px;border:1px solid var(--line);background:var(--surface);font:600 12px/22px var(--font-body);color:var(--fg-2);text-align:center}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);box-shadow:inset 0 0 0 1px var(--accent-line);display:grid;place-items:center;font-weight:700;flex:none;transition:filter .12s}

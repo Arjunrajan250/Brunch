@@ -20,9 +20,11 @@ import { hasStore } from '@/data/stores';
 import { Launch, LaunchType, ChartKind } from '@/types/brunch';
 
 export function ExploreView() {
-  const { allLaunches, go, setTab, setSubTab, setChartFilter } = useBrunch();
+  const { allLaunches, engagement, go, setTab, setSubTab, setChartFilter } = useBrunch();
 
   const l = allLaunches;
+  const byVotes = (items: Launch[]) => sortTop(items, engagement.votes);
+  const byTries = (items: Launch[]) => sortTried(items, engagement.clicks);
 
   if (!l.length) {
     return (
@@ -78,7 +80,7 @@ export function ExploreView() {
       eb: 'Games',
       hue: 280,
       glyph: 'gamepad',
-      items: sortTop(l.filter((x) => x.type === 'game')),
+      items: byVotes(l.filter((x) => x.type === 'game')),
     },
     {
       title: 'Code you can read on GitHub',
@@ -86,14 +88,14 @@ export function ExploreView() {
       hue: 232,
       isIcon: true,
       name: 'code',
-      items: sortTop(l.filter((x) => hasStore(x, 'github'))),
+      items: byVotes(l.filter((x) => hasStore(x, 'github'))),
     },
     {
       title: 'Little tools that earn their place',
       eb: 'Tools',
       hue: 192,
       glyph: 'hex',
-      items: sortTop(l.filter((x) => x.type === 'tool')),
+      items: byVotes(l.filter((x) => x.type === 'tool')),
     },
     {
       title: 'Fresh from makers this week',
@@ -108,7 +110,7 @@ export function ExploreView() {
       hue: 150,
       isIcon: true,
       name: 'play',
-      items: sortTop(l.filter((x) => hasStore(x, 'play'))),
+      items: byVotes(l.filter((x) => hasStore(x, 'play'))),
     },
     {
       title: 'Made for iPhone and iPad',
@@ -116,25 +118,30 @@ export function ExploreView() {
       hue: 322,
       isIcon: true,
       name: 'bag',
-      items: sortTop(l.filter((x) => hasStore(x, 'appstore'))),
+      items: byVotes(l.filter((x) => hasStore(x, 'appstore'))),
     },
     {
       title: 'The ones everyone opened',
       eb: 'Most tried',
       hue: 352,
       glyph: 'flame',
-      items: sortTried(l),
+      items: byTries(l),
     },
     {
       title: 'No wifi, no problem',
       eb: 'Offline',
       hue: 100,
       glyph: 'plane',
-      items: sortTop(l.filter((x) => x.tags.includes('offline'))),
+      items: byVotes(l.filter((x) => x.tags.includes('offline'))),
     },
   ].filter((c) => c.items.length > 0);
 
-  const topMakers = getMakersList(l).slice(0, 3);
+  const topMakers = getMakersList(
+    l,
+    engagement.votes,
+    engagement.clicks,
+    engagement.follows
+  ).slice(0, 3);
 
   return (
     <div className="stack xp" style={{ gap: '28px' }}>
@@ -148,8 +155,9 @@ export function ExploreView() {
               className="gt hu"
               style={{ '--h': tile.hue } as React.CSSProperties}
               onClick={() => {
-                setTab('home');
-                setSubTab('home', 'charts');
+                const tab = tile.v === 'game' ? 'games' : tile.v === 'app' ? 'apps' : 'tools';
+                setTab(tab);
+                setSubTab(tab, 'charts');
               }}
             >
               <span className="gi">
@@ -230,9 +238,9 @@ export function ExploreView() {
       <section>
         <h2 className="lead" style={{ marginBottom: '12px' }}>Collections</h2>
         <div className="eds">
-          {collections.map((col, idx) => (
+          {collections.map((col) => (
             <button
-              key={idx}
+              key={col.title}
               className="ed hu cursor-pointer"
               style={{ '--h': col.hue } as React.CSSProperties}
               onClick={() =>

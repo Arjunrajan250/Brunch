@@ -33,6 +33,9 @@ const DR: [number, string][] = [
   [90, '90 days'],
 ];
 
+// The bundled 2024 samples need a stable reference date; real launches advance it by timestamp.
+const SAMPLE_REFERENCE_TIME = 1730700000000;
+
 const niceMax = (v: number) => {
   const s = [4, 6, 8, 10, 12, 20, 40, 60, 80, 100];
   for (let k = 1; ; k *= 10) {
@@ -44,11 +47,19 @@ const niceMax = (v: number) => {
 
 const fmtD = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-export function CreatorDashboard({ launchId, isDemo = false }: { launchId: string; isDemo?: boolean }) {
-  const { allLaunches, engagement, go, openSheet, getComments } = useBrunch();
+export function CreatorDashboard({
+  launchId,
+  isDemo = false,
+  metric = 'views',
+  days = 30,
+}: {
+  launchId: string;
+  isDemo?: boolean;
+  metric?: MetricType;
+  days?: number;
+}) {
+  const { allLaunches, myLaunches, engagement, go, openSheet, getComments, user } = useBrunch();
 
-  const [metric, setMetric] = useState<MetricType>('views');
-  const [days, setDays] = useState<number>(30);
   const [activeTooltip, setActiveTooltip] = useState<{ index: number; x: number; y: number; val: number; date: string } | null>(null);
 
   const launch = allLaunches.find((x) => x.id === launchId);
@@ -77,9 +88,13 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
   // Generate daily series
   const seriesData = useMemo(() => {
     if (!launch) return [];
+    const referenceTime = Math.max(
+      SAMPLE_REFERENCE_TIME,
+      ...allLaunches.map((item) => item.ts)
+    ) + DAY;
     const ds: number[] = [];
     for (let i = 0; i < days; i++) {
-      const d = new Date();
+      const d = new Date(referenceTime);
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - (days - 1 - i));
       ds.push(d.getTime());
@@ -87,7 +102,7 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
 
     const out = ds.map((t) => ({ t, n: 0 }));
     const tot = totals[metric];
-    const life = Math.max(1, Math.ceil((Date.now() - launch.ts) / DAY));
+    const life = Math.max(1, Math.ceil((referenceTime - launch.ts) / DAY));
     const r = rng(launch.id + metric);
     const w: number[] = [];
     let sum = 0;
@@ -110,7 +125,7 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
     });
 
     return out;
-  }, [launch, days, metric, totals]);
+  }, [allLaunches, launch, days, metric, totals]);
 
   if (!launch) {
     return (
@@ -125,17 +140,28 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
     );
   }
 
-  const makerKey = launch.sample ? 's:' + launch.maker.toLowerCase() : launch.uid || 'n:' + launch.maker;
+  const allMakers = getMakersList(
+    allLaunches,
+    engagement.votes,
+    engagement.clicks,
+    engagement.follows
+  );
+  const launchMaker = allMakers.find((m) => m.list.some((item) => item.id === launch.id));
+  const makerKey = launchMaker?.key || launch.uid || `n:${launch.maker}`;
   const followersCount = calcFollowers(makerKey, engagement.follows);
   const comments = getComments(launch.id, 'launch');
   const tryRate = totals.views >= 5 ? Math.round((totals.clicks / totals.views) * 100) + '%' : '—';
   const totalInPeriod = seriesData.reduce((s, x) => s + x.n, 0);
   const metricLabel = DM.find((x) => x[0] === metric)?.[1] || 'Metric';
+  const canManage = !isDemo && !launch.sample && (user
+    ? launch.uid === user.id
+    : myLaunches.some((item) => item.id === launch.id));
 
-  // Ranking calculation
-  const allMakers = getMakersList(allLaunches, engagement.votes, engagement.clicks, engagement.follows);
-  const creatorRank = allMakers.findIndex((m) => m.name === launch.maker) + 1;
-  const categoryPeers = allLaunches.filter((x) => x.type === launch.type);
+  // Rank against the actual metric shown rather than the source array order.
+  const creatorRank = allMakers.findIndex((m) => m.key === makerKey) + 1;
+  const categoryPeers = allLaunches
+    .filter((x) => x.type === launch.type)
+    .sort((a, b) => calcVotes(b, engagement.votes) - calcVotes(a, engagement.votes));
   const launchRank = categoryPeers.findIndex((x) => x.id === launch.id) + 1;
 
   // Chart measurements
@@ -181,10 +207,12 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
             <button className="btn text sm" onClick={() => go({ t: 'launch', id: launch.id })}>
               View listing
             </button>
-            {!isDemo && (
+            {canManage ? (
               <button className="btn text sm" onClick={() => go({ t: 'submit', edit: launch.id })}>
                 Edit
               </button>
+            ) : (
+              <span className="fine px-3 py-2">Viewing as a visitor</span>
             )}
           </div>
         </div>
@@ -195,17 +223,17 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
         <div className="kpi">
           <span>Viewers</span>
           <b>{fmtN(totals.views)}</b>
-          <small className="up">+12 this week</small>
+          {isDemo ? <small className="up">+12 this week</small> : <small>Recorded total</small>}
         </div>
         <div className="kpi">
           <span>Tried it</span>
           <b>{fmtN(totals.clicks)}</b>
-          <small className="up">+8 this week</small>
+          {isDemo ? <small className="up">+8 this week</small> : <small>Recorded total</small>}
         </div>
         <div className="kpi">
           <span>Upvotes</span>
           <b>{fmtN(totals.votes)}</b>
-          <small className="up">+4 this week</small>
+          {isDemo ? <small className="up">+4 this week</small> : <small>Recorded total</small>}
         </div>
         <div className="kpi">
           <span>Saves</span>
@@ -227,14 +255,14 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
       {/* Interactive Chart Panel */}
       <section className="panel">
         <div className="panel-h">
-          <h2>{metricLabel} per day</h2>
+          <h2>{isDemo ? `${metricLabel} per day (sample)` : 'Estimated daily distribution'}</h2>
           <div className="chips wrap" role="group" aria-label="Time range">
             {DR.map(([val, label]) => (
               <button
                 key={val}
                 className="chip"
                 aria-pressed={days === val}
-                onClick={() => setDays(val)}
+                onClick={() => go({ t: 'dash', id: launchId, demo: isDemo, m: metric, d: val })}
               >
                 {label}
               </button>
@@ -242,13 +270,19 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
           </div>
         </div>
 
+        <p className="fine">
+          {isDemo
+            ? 'Synthetic sample activity for this dashboard preview.'
+            : `Uses the recorded ${metricLabel.toLowerCase()} total to estimate its daily shape; this is not day-by-day analytics.`}
+        </p>
+
         <div className="chips wrap" role="group" aria-label="Metric">
           {DM.map(([key, label]) => (
             <button
               key={key}
               className="chip"
               aria-pressed={metric === key}
-              onClick={() => setMetric(key)}
+              onClick={() => go({ t: 'dash', id: launchId, demo: isDemo, m: key, d: days })}
             >
               {label}
             </button>
@@ -256,7 +290,7 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
         </div>
 
         <p className="readout" aria-live="polite">
-          <b>{fmtN(totalInPeriod)}</b> {metricLabel.toLowerCase()} in the last {days} days
+          <b>{fmtN(totalInPeriod)}</b> {!isDemo && 'estimated '}{metricLabel.toLowerCase()} in the last {days} days
         </p>
 
         {/* SVG Chart */}
@@ -267,7 +301,7 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
             width="100%"
             height={chartH}
             role="img"
-            aria-label={`${metricLabel} per day for the last ${days} days.`}
+            aria-label={`${isDemo ? 'Sample' : 'Estimated'} ${metricLabel.toLowerCase()} per day for the last ${days} days.`}
           >
             {/* Grid lines */}
             {[0, topVal / 2, topVal].map((v, i) => {
@@ -411,8 +445,8 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
       {/* Creator stats */}
       <section className="panel">
         <div className="panel-h">
-          <h2>You as a creator</h2>
-          {!isDemo && (
+          <h2>{canManage ? 'You as a creator' : `${launch.maker} as a creator`}</h2>
+          {canManage && (
             <button
               className="btn out sm"
               onClick={() => openSheet({ type: 'editprofile' })}
@@ -425,12 +459,12 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
           <div className="kpi">
             <span>Followers</span>
             <b>{fmtN(followersCount)}</b>
-            <small>People following you</small>
+            <small>{canManage ? 'People following you' : 'People following this creator'}</small>
           </div>
           <div className="kpi">
             <span>Support opens</span>
-            <b>{fmtN(Math.round(followersCount * 0.08))}</b>
-            <small>Taps on your links</small>
+            <b>{isDemo ? fmtN(Math.round(followersCount * 0.08)) : '—'}</b>
+            <small>{isDemo ? 'Sample link taps' : 'Not tracked'}</small>
           </div>
           <div className="kpi">
             <span>Creator rank</span>
@@ -440,7 +474,7 @@ export function CreatorDashboard({ launchId, isDemo = false }: { launchId: strin
           <div className="kpi">
             <span>Launch rank</span>
             <b>{launchRank ? `#${launchRank}` : '—'}</b>
-            <small>of {categoryPeers.length} {TYPE[launch.type]?.plural.toLowerCase()} this week</small>
+            <small>of {categoryPeers.length} {TYPE[launch.type]?.plural.toLowerCase()} by upvotes</small>
           </div>
         </div>
       </section>

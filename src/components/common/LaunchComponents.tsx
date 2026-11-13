@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
+import Image from 'next/image';
 import { Launch } from '@/types/brunch';
 import { useBrunch } from '@/context/BrunchContext';
 import { Glyph, Icon } from '@/components/icons/Icons';
@@ -20,7 +21,7 @@ export function LaunchIcon({ launch, size = 56 }: { launch: Launch; size?: numbe
       style={{ '--h': launch.hue, '--s': `${size}px` } as React.CSSProperties}
     >
       {launch.icon ? (
-        <img src={launch.icon} alt="" decoding="async" />
+        <Image src={launch.icon} alt="" width={size} height={size} unoptimized />
       ) : (
         <Glyph name={launch.glyph} size={Math.round(size * 0.52)} />
       )}
@@ -53,7 +54,7 @@ export function VoteButton({ launch, lg = false }: { launch: Launch; lg?: boolea
       className={`vote ${lg ? 'lg' : ''}`}
       onClick={(e) => {
         e.stopPropagation();
-        toggleVote(launch.id);
+        void toggleVote(launch.id);
       }}
       aria-pressed={isVoted}
       aria-label={`${isVoted ? 'Remove upvote from' : 'Upvote'} ${launch.name}`}
@@ -110,32 +111,41 @@ export function LaunchCard({ launch }: { launch: Launch }) {
   );
 }
 
-export function LaunchRow({ launch, rank }: { launch: Launch; rank?: number }) {
+export function LaunchRow({ launch, rank, preview = false }: { launch: Launch; rank?: number; preview?: boolean }) {
   const { go } = useBrunch();
   const hasGH = isGH(launch);
   const typeLabel = TYPE[launch.type]?.label || 'App';
   const platformStr = platText(launch);
+  const content = (
+    <>
+      {rank !== undefined && rank > 0 && <span className="rk">{rank}</span>}
+      <LaunchIcon launch={launch} size={56} />
+      <span className="tx">
+        <span className="nm">{launch.name}</span>
+        <span className="tg">{launch.tag}</span>
+        <span className="mt flex items-center gap-1">
+          {hasGH && <GitHubBadge />}
+          <span>
+            {typeLabel} · {platformStr} · {launch.maker}
+          </span>
+        </span>
+      </span>
+    </>
+  );
 
   return (
     <div className="lrow2">
-      <button
-        className="row cursor-pointer"
-        onClick={() => go({ t: 'launch', id: launch.id })}
-      >
-        {rank !== undefined && rank > 0 && <span className="rk">{rank}</span>}
-        <LaunchIcon launch={launch} size={56} />
-        <span className="tx">
-          <span className="nm">{launch.name}</span>
-          <span className="tg">{launch.tag}</span>
-          <span className="mt flex items-center gap-1">
-            {hasGH && <GitHubBadge />}
-            <span>
-              {typeLabel} · {platformStr} · {launch.maker}
-            </span>
-          </span>
-        </span>
-      </button>
-      <VoteButton launch={launch} />
+      {preview ? (
+        <div className="row" aria-label="Launch preview">{content}</div>
+      ) : (
+        <button
+          className="row cursor-pointer"
+          onClick={() => go({ t: 'launch', id: launch.id })}
+        >
+          {content}
+        </button>
+      )}
+      {!preview && <VoteButton launch={launch} />}
     </div>
   );
 }

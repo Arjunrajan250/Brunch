@@ -3,7 +3,6 @@
 import React from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { BrunchLogo, Icon } from '@/components/icons/Icons';
-import { MainTab } from '@/types/brunch';
 
 export function Rail() {
   const { currentRoute, activeTab, setTab, go } = useBrunch();

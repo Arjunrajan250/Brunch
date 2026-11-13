@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 import { useBrunch } from '@/context/BrunchContext';
-import { Launch, Maker, SupportLink } from '@/types/brunch';
+import { Launch, Maker } from '@/types/brunch';
 import { getMakersList, fmtN, socialInfo, SUP, parseUrl, hash, TYPE, platText } from '@/data/seed';
 import { storesOf, STORES } from '@/data/stores';
 import { LaunchIcon, MakerAvatar, VoteButton } from '@/components/common/LaunchComponents';
 import { Glyph, Icon } from '@/components/icons/Icons';
+import { copyText } from '@/lib/clipboard';
 
 export const SUP_WARN = (
   <div className="warn">
@@ -17,11 +19,25 @@ export const SUP_WARN = (
   </div>
 );
 
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function readStoredImage(key: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
 function MineCard({ launch }: { launch: Launch }) {
   const { go, openShareLaunch, openSheet, engagement } = useBrunch();
   const v = (launch.base || 0) + (engagement.votes[launch.id] ? 1 : 0);
   const c = (launch.tried || 0) + (engagement.clicks[launch.id] ? 1 : 0);
-  const views = engagement.views[launch.id] || Math.round(c * 2.8) + 12;
+  const views =
+    (launch.viewCount ?? (launch.sample ? Math.round(c * 2.8) + 12 : 0)) +
+    (engagement.views[launch.id] ? 1 : 0);
 
   const stores = storesOf(launch);
   const typeLabel = TYPE[launch.type]?.label || 'App';
@@ -208,46 +224,57 @@ export function MakerView({ makerKey }: { makerKey: string }) {
     currentRoute.t === 'me' && currentRoute.sub ? currentRoute.sub : 'launches'
   );
 
-  const [pic, setPic] = useState<string>('');
-  const [ban, setBan] = useState<string>('');
+  const [pic, setPic] = useState<string>(() => readStoredImage('brunch.user.pic'));
+  const [ban, setBan] = useState<string>(() => readStoredImage('brunch.user.ban'));
   const picInputRef = useRef<HTMLInputElement>(null);
   const banInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedPic = localStorage.getItem('brunch.user.pic') || '';
-      const storedBan = localStorage.getItem('brunch.user.ban') || '';
-      if (storedPic) setPic(storedPic);
-      if (storedBan) setBan(storedBan);
+  const handleImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    kind: 'pic' | 'ban'
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!IMAGE_TYPES.has(file.type)) {
+      toast('Choose a JPG, PNG, WebP or GIF image.');
+      return;
     }
-  }, []);
+    if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
+      toast('Choose a non-empty image no larger than 2 MB.');
+      return;
+    }
 
-  const handlePicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const label = kind === 'pic' ? 'Profile photo' : 'Profile banner';
+    const storageKey = kind === 'pic' ? 'brunch.user.pic' : 'brunch.user.ban';
+    const setImage = kind === 'pic' ? setPic : setBan;
     const reader = new FileReader();
+
     reader.onload = () => {
-      const res = reader.result as string;
-      setPic(res);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('brunch.user.pic', res);
+      if (typeof reader.result !== 'string') {
+        toast(`Could not read that ${kind === 'pic' ? 'photo' : 'banner'}.`);
+        return;
       }
-      toast('Profile photo updated');
+
+      const result = reader.result;
+      setImage(result);
+      try {
+        localStorage.setItem(storageKey, result);
+        toast(`${label} updated`);
+      } catch (error) {
+        const isQuotaError =
+          error instanceof DOMException &&
+          (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+        toast(
+          isQuotaError
+            ? `${label} is visible for this session, but browser storage is full.`
+            : `${label} is visible for this session, but it could not be saved on this device.`
+        );
+      }
     };
-    reader.readAsDataURL(file);
-  };
-
-  const handleBanUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const res = reader.result as string;
-      setBan(res);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('brunch.user.ban', res);
-      }
-      toast('Profile banner updated');
+    reader.onerror = () => {
+      toast(`Could not read that ${kind === 'pic' ? 'photo' : 'banner'}. Please try another image.`);
     };
     reader.readAsDataURL(file);
   };
@@ -261,10 +288,11 @@ export function MakerView({ makerKey }: { makerKey: string }) {
   if (isOwn) {
     const myVotes = myLaunches.reduce((acc, l) => acc + (l.base || 0) + (engagement.votes[l.id] ? 1 : 0), 0);
     const myTries = myLaunches.reduce((acc, l) => acc + (l.tried || 0) + (engagement.clicks[l.id] ? 1 : 0), 0);
-    const myFol = Object.keys(engagement.follows).filter((k) => k === 'me' || k === (makerName || 'You')).length;
+    // Local follow storage contains this viewer's outgoing follows, not their followers.
+    const myFol = 0;
 
     maker = {
-      key: 'me',
+      key: makerKey || user?.id || 'me',
       name: makerName || userProfile?.name || 'You',
       bio: makerBio || userProfile?.bio || '',
       social: makerLink || userProfile?.website || '',
@@ -302,31 +330,28 @@ export function MakerView({ makerKey }: { makerKey: string }) {
   const isFollowing = !isOwn && !!engagement.follows[maker.key];
   const socials = maker.socials && maker.socials.length > 0 ? maker.socials : maker.social ? [maker.social] : [];
   const hue = hash(maker.key) % 360;
+  const bannerImage = isOwn ? ban : maker.ban;
+  const profileImage = isOwn ? pic : maker.pic;
 
-  const copyUpi = (upiId: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(upiId);
-      toast('UPI ID copied');
-    }
+  const copyUpi = async (upiId: string) => {
+    const copied = await copyText(upiId);
+    toast(copied ? 'UPI ID copied' : 'Could not copy the UPI ID. Please copy it manually.');
   };
 
-  const copyProfileShare = () => {
-    if (typeof window !== 'undefined') {
-      const url = `${window.location.origin}#u/${maker.key}`;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(url);
-        toast('Profile link copied');
-      }
-    }
+  const copyProfileShare = async () => {
+    if (typeof window === 'undefined') return;
+    const url = `${window.location.origin}/u/${encodeURIComponent(maker.key)}`;
+    const copied = await copyText(url);
+    toast(copied ? 'Profile link copied' : 'Could not copy the profile link.');
   };
 
-  // Profile Checklist items (Own profile)
+  // Profile Checklist items (Own profile). Ref-backed actions stay in event handlers below.
   const todo = [
-    { ok: myLaunches.length > 0, text: 'Launch something', act: () => go({ t: 'submit' }) },
-    { ok: !!maker.bio, text: 'Write a short bio', act: () => openSheet({ type: 'editprofile' }) },
-    { ok: socials.length > 0, text: 'Add your social pages', act: () => openSheet({ type: 'editprofile' }) },
-    { ok: maker.support.length > 0, text: 'Add a support link', act: () => openSheet({ type: 'editprofile' }) },
-    { ok: !!(pic || maker.pic), text: 'Add a profile photo', act: () => picInputRef.current?.click() },
+    { id: 'launch', ok: myLaunches.length > 0, text: 'Launch something' },
+    { id: 'bio', ok: !!maker.bio, text: 'Write a short bio' },
+    { id: 'socials', ok: socials.length > 0, text: 'Add your social pages' },
+    { id: 'support', ok: maker.support.length > 0, text: 'Add a support link' },
+    { id: 'photo', ok: !!(pic || maker.pic), text: 'Add a profile photo' },
   ];
   const done = todo.filter((t) => t.ok).length;
 
@@ -340,16 +365,16 @@ export function MakerView({ makerKey }: { makerKey: string }) {
           <input
             ref={picInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             className="hidden"
-            onChange={handlePicUpload}
+            onChange={(e) => handleImageUpload(e, 'pic')}
           />
           <input
             ref={banInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             className="hidden"
-            onChange={handleBanUpload}
+            onChange={(e) => handleImageUpload(e, 'ban')}
           />
         </>
       )}
@@ -368,8 +393,15 @@ export function MakerView({ makerKey }: { makerKey: string }) {
         aria-label="Creator profile"
       >
         <div className={`mp-cover ${(isOwn ? ban : maker.ban) ? 'has' : ''}`} aria-hidden="true">
-          {(isOwn ? ban : maker.ban) && (
-            <img src={isOwn ? ban : maker.ban} alt="" decoding="async" />
+          {bannerImage && (
+            <Image
+              src={bannerImage}
+              alt=""
+              fill
+              sizes="100vw"
+              unoptimized
+              decoding="async"
+            />
           )}
         </div>
 
@@ -392,8 +424,15 @@ export function MakerView({ makerKey }: { makerKey: string }) {
                 style={{ '--h': hue, '--s': 'var(--av)' } as React.CSSProperties}
                 aria-hidden="true"
               >
-                {(isOwn ? pic : maker.pic) ? (
-                  <img src={isOwn ? pic : maker.pic} alt="" decoding="async" />
+                {profileImage ? (
+                  <Image
+                    src={profileImage}
+                    alt=""
+                    width={116}
+                    height={116}
+                    unoptimized
+                    decoding="async"
+                  />
                 ) : (
                   (maker.name || '?').trim()[0]?.toUpperCase() || '?'
                 )}
@@ -648,7 +687,9 @@ export function MakerView({ makerKey }: { makerKey: string }) {
                     <div className="empty">
                       <Icon name="bookmark" size={44} />
                       <b>Nothing saved yet</b>
-                      <span>Tap “Save for later” on any launch to keep it here.</span>
+                      <span>
+                        Tap “Save for later” on any launch to keep it here.
+                      </span>
                       <button
                         className="btn out cursor-pointer"
                         onClick={() => go({ t: 'tab', tab: 'home' })}
@@ -743,9 +784,9 @@ export function MakerView({ makerKey }: { makerKey: string }) {
                 <i style={{ width: `${Math.round((done / todo.length) * 100)}%` }} />
               </div>
               <ul className="mp-todo">
-                {todo.map((item, idx) =>
+                {todo.map((item) =>
                   item.ok ? (
-                    <li key={idx} className="ok">
+                    <li key={item.id} className="ok">
                       <div className="r">
                         <span className="ck">
                           <Icon name="check" size={14} />
@@ -754,8 +795,15 @@ export function MakerView({ makerKey }: { makerKey: string }) {
                       </div>
                     </li>
                   ) : (
-                    <li key={idx}>
-                      <button className="r cursor-pointer" onClick={item.act}>
+                    <li key={item.id}>
+                      <button
+                        className="r cursor-pointer"
+                        onClick={() => {
+                          if (item.id === 'launch') go({ t: 'submit' });
+                          else if (item.id === 'photo') picInputRef.current?.click();
+                          else openSheet({ type: 'editprofile' });
+                        }}
+                      >
                         <span className="ck">
                           <Icon name="plus" size={14} />
                         </span>
@@ -785,7 +833,7 @@ export function MakerView({ makerKey }: { makerKey: string }) {
                       <button
                         key={idx}
                         className="sup-i cursor-pointer"
-                        onClick={() => copyUpi(s.u)}
+                        onClick={() => void copyUpi(s.u)}
                       >
                         <span className={`si ${s.t}`}>
                           <Glyph name={supDef.glyph} size={20} />

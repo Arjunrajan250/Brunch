@@ -6,6 +6,9 @@ import { Post, Community } from '@/types/brunch';
 import { fmtN, ago, parseUrl } from '@/data/seed';
 import { Carousel } from '@/components/common/LaunchComponents';
 import { Glyph, Icon } from '@/components/icons/Icons';
+import { copyText } from '@/lib/clipboard';
+import { routeToUrl } from '@/lib/navigation';
+import { postScore, sortPosts } from '@/lib/posts';
 
 export function CommunityAvatar({ community, size = 36 }: { community: Community; size?: number }) {
   return (
@@ -22,14 +25,14 @@ export function CommunityAvatar({ community, size = 36 }: { community: Community
 export function PostVotingPill({ post }: { post: Post }) {
   const { forumEngagement, votePost } = useBrunch();
   const dir = forumEngagement.pv[post.id] || 0;
-  const currentScore = (post.base || 1) + (forumEngagement.pv[post.id] || 0);
+  const currentScore = postScore(post, forumEngagement);
 
   return (
     <span className="pv" role="group" aria-label="Vote">
       <button
         className={`pu ${dir === 1 ? 'text-[var(--ink)]' : ''}`}
         aria-pressed={dir === 1}
-        onClick={() => votePost(post.id, 1)}
+        onClick={() => void votePost(post.id, 1)}
         aria-label="Upvote"
       >
         <Icon name="up" size={18} />
@@ -38,7 +41,7 @@ export function PostVotingPill({ post }: { post: Post }) {
       <button
         className={`pd ${dir === -1 ? 'text-[var(--danger)]' : ''}`}
         aria-pressed={dir === -1}
-        onClick={() => votePost(post.id, -1)}
+        onClick={() => void votePost(post.id, -1)}
         aria-label="Downvote"
       >
         <Icon name="down" size={18} />
@@ -53,11 +56,10 @@ export function PostCard({ post, noCommunity = false }: { post: Post; noCommunit
   const commentCount = (post.cbase || 0) + (forumEngagement.pc[post.id] || 0);
   const linkParsed = post.link ? parseUrl(post.link) : null;
 
-  const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(`${post.title} (b/${community?.slug || 'brunch'})`);
-      toast('Copied link');
-    }
+  const handleShare = async () => {
+    const url = new URL(routeToUrl({ t: 'post', id: post.id }), window.location.origin).href;
+    const copied = await copyText(url);
+    toast(copied ? 'Post link copied' : 'Could not copy the link. Copy it from the address bar instead.');
   };
 
   return (
@@ -132,29 +134,13 @@ export function CommunityFeed() {
 
   const joinedCommunities = allCommunities.filter((c) => !!forumEngagement.joined[c.id]);
 
-  let posts = [...allPosts];
-  if (forumScope === 'joined') {
-    posts = posts.filter((p) => joinedCommunities.some((c) => c.id === p.cid));
-  }
-
-  // Sort posts
-  if (forumSort === 'new') {
-    posts.sort((a, b) => b.ts - a.ts);
-  } else if (forumSort === 'top') {
-    posts.sort(
-      (a, b) =>
-        (b.base || 1) + (forumEngagement.pv[b.id] || 0) - ((a.base || 1) + (forumEngagement.pv[a.id] || 0))
-    );
-  } else {
-    // Hot sorting
-    posts.sort((a, b) => {
-      const scoreA = (a.base || 1) + (forumEngagement.pv[a.id] || 0);
-      const scoreB = (b.base || 1) + (forumEngagement.pv[b.id] || 0);
-      const hotA = scoreA / Math.pow((Date.now() - a.ts) / 36e5 + 2, 1.5);
-      const hotB = scoreB / Math.pow((Date.now() - b.ts) / 36e5 + 2, 1.5);
-      return hotB - hotA;
-    });
-  }
+  const posts = sortPosts(
+    forumScope === 'joined'
+      ? allPosts.filter((post) => joinedCommunities.some((community) => community.id === post.cid))
+      : allPosts,
+    forumEngagement,
+    forumSort,
+  );
 
   const strip = [...allCommunities].sort((a, b) => {
     const aJoined = forumEngagement.joined[a.id] ? 1 : 0;

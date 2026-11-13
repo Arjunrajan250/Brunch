@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:prod": "PLAYWRIGHT_PRODUCTION=1 playwright test",
+    "test:e2e:cloud": "playwright test --config=playwright.cloud.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -16,6 +19,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

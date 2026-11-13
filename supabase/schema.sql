@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.launches (
   type TEXT NOT NULL CHECK (type IN ('game', 'app', 'tool')),
   url TEXT NOT NULL,
   repo TEXT DEFAULT '',
+  links TEXT[] NOT NULL DEFAULT '{}',
   plats TEXT[] NOT NULL DEFAULT '{w}',
   tags TEXT[] NOT NULL DEFAULT '{}',
   "desc" TEXT DEFAULT '',
@@ -42,6 +43,9 @@ CREATE TABLE IF NOT EXISTS public.launches (
   tries_count INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Keep existing installations compatible with the multi-link launch form.
+ALTER TABLE public.launches ADD COLUMN IF NOT EXISTS links TEXT[] NOT NULL DEFAULT '{}';
 
 -- 4. Communities Table
 CREATE TABLE IF NOT EXISTS public.communities (
@@ -141,24 +145,67 @@ CREATE INDEX IF NOT EXISTS idx_post_votes_post ON public.post_votes(post_id);
 CREATE INDEX IF NOT EXISTS idx_comm_members_user ON public.community_members(user_id);
 
 -- ==============================================================================
--- ATOMIC METRIC INCREMENT RPC
+-- ATOMIC, ONCE-PER-USER METRIC INCREMENT RPC
 -- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.launch_metric_events (
+  launch_id TEXT NOT NULL REFERENCES public.launches(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  metric_type TEXT NOT NULL CHECK (metric_type IN ('views', 'tries')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (launch_id, user_id, metric_type)
+);
+
+ALTER TABLE public.launch_metric_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.launch_metric_events FROM anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.increment_launch_metric(launch_id TEXT, metric_type TEXT)
-RETURNS VOID AS $$
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  recorded_user UUID;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Sign in to record launch metrics';
+  END IF;
+  IF metric_type NOT IN ('views', 'tries') THEN
+    RAISE EXCEPTION 'Unsupported launch metric';
+  END IF;
+
+  INSERT INTO public.launch_metric_events (launch_id, user_id, metric_type)
+  VALUES (increment_launch_metric.launch_id, auth.uid(), increment_launch_metric.metric_type)
+  ON CONFLICT (launch_id, user_id, metric_type) DO NOTHING
+  RETURNING user_id INTO recorded_user;
+
+  -- A repeat call by the same account is intentionally a no-op.
+  IF recorded_user IS NULL THEN RETURN; END IF;
+
   IF metric_type = 'views' THEN
-    UPDATE public.launches SET views_count = views_count + 1 WHERE id = launch_id;
-  ELSIF metric_type = 'tries' THEN
-    UPDATE public.launches SET tries_count = tries_count + 1 WHERE id = launch_id;
+    UPDATE public.launches
+      SET views_count = views_count + 1
+      WHERE launches.id = increment_launch_metric.launch_id;
+  ELSE
+    UPDATE public.launches
+      SET tries_count = tries_count + 1
+      WHERE launches.id = increment_launch_metric.launch_id;
   END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE ALL ON FUNCTION public.increment_launch_metric(TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.increment_launch_metric(TEXT, TEXT) TO authenticated;
 
 -- ==============================================================================
 -- AUTOMATIC PROFILE CREATION TRIGGER
 -- ==============================================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
   INSERT INTO public.profiles (id, name, handle, avatar_url)
   VALUES (
@@ -172,14 +219,26 @@ BEGIN
     COALESCE(
       NEW.raw_user_meta_data->>'user_name',
       NEW.raw_user_meta_data->>'handle',
-      'maker_' || SUBSTR(NEW.id::TEXT, 1, 8)
+      'maker_' || SUBSTR(REPLACE(NEW.id::TEXT, '-', ''), 1, 12)
     ),
     COALESCE(NEW.raw_user_meta_data->>'avatar_url', '')
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
+EXCEPTION WHEN unique_violation THEN
+  -- A requested username may already be taken. Account creation must still
+  -- leave a usable profile rather than rolling back the auth.users insert.
+  INSERT INTO public.profiles (id, name, handle, avatar_url)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', SPLIT_PART(NEW.email, '@', 1), 'Maker'),
+    'maker_' || SUBSTR(REPLACE(NEW.id::TEXT, '-', ''), 1, 12),
+    COALESCE(NEW.raw_user_meta_data->>'avatar_url', '')
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -200,37 +259,58 @@ ALTER TABLE public.post_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.community_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
 
+-- Recreate only this application's public-table policies on repeated runs.
+DO $$
+DECLARE
+  policy_record RECORD;
+BEGIN
+  FOR policy_record IN
+    SELECT policyname, tablename FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN ('profiles', 'launches', 'communities', 'posts', 'comments', 'votes', 'saves', 'post_votes', 'community_members', 'follows')
+  LOOP
+    EXECUTE format('DROP POLICY %I ON public.%I', policy_record.policyname, policy_record.tablename);
+  END LOOP;
+END;
+$$;
+
 -- Profiles: Anyone can view profiles, owners can update their own
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 -- Launches: Anyone can view, authenticated users can insert, makers can update/delete
 CREATE POLICY "Launches are viewable by everyone" ON public.launches FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can create launches" ON public.launches FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Makers can update their own launches" ON public.launches FOR UPDATE USING (auth.uid() = maker_id);
+CREATE POLICY "Authenticated users can create launches" ON public.launches FOR INSERT WITH CHECK (auth.uid() = maker_id AND sample = false);
+CREATE POLICY "Makers can update their own launches" ON public.launches FOR UPDATE USING (auth.uid() = maker_id) WITH CHECK (auth.uid() = maker_id AND sample = false);
 CREATE POLICY "Makers can delete their own launches" ON public.launches FOR DELETE USING (auth.uid() = maker_id);
 
 -- Communities: Anyone can view, authenticated users can create
 CREATE POLICY "Communities are viewable by everyone" ON public.communities FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can create communities" ON public.communities FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can create communities" ON public.communities FOR INSERT WITH CHECK (auth.uid() = creator_id AND sample = false);
 
 -- Posts: Anyone can view, authenticated users can create, authors can delete
 CREATE POLICY "Posts are viewable by everyone" ON public.posts FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can create posts" ON public.posts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can create posts" ON public.posts FOR INSERT WITH CHECK (auth.uid() = author_id AND sample = false);
 CREATE POLICY "Authors can delete their own posts" ON public.posts FOR DELETE USING (auth.uid() = author_id);
 
 -- Comments: Anyone can view, authenticated users can comment, authors can delete
 CREATE POLICY "Comments are viewable by everyone" ON public.comments FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can post comments" ON public.comments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can post comments" ON public.comments FOR INSERT WITH CHECK (
+  auth.uid() = author_id
+  AND (
+    (target_type = 'launch' AND EXISTS (SELECT 1 FROM public.launches WHERE launches.id = comments.target_id))
+    OR (target_type = 'post' AND EXISTS (SELECT 1 FROM public.posts WHERE posts.id = comments.target_id))
+  )
+);
 CREATE POLICY "Authors can delete their comments" ON public.comments FOR DELETE USING (auth.uid() = author_id);
 
 -- Votes: Anyone can view, authenticated users can manage their own votes
 CREATE POLICY "Votes are viewable by everyone" ON public.votes FOR SELECT USING (true);
 CREATE POLICY "Users can toggle their own votes" ON public.votes FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
--- Saves: Users can view and manage their own saves
-CREATE POLICY "Users can view their own saves" ON public.saves FOR SELECT USING (auth.uid() = user_id);
+-- Saves: counts are public; only the matching user can write a save.
+CREATE POLICY "Users can view their own saves" ON public.saves FOR SELECT USING (true);
 CREATE POLICY "Users can manage their own saves" ON public.saves FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Post Votes: Anyone can view, users manage their own
@@ -243,14 +323,28 @@ CREATE POLICY "Users can join/leave communities" ON public.community_members FOR
 
 -- Follows: Anyone can view, users manage their own follows
 CREATE POLICY "Follows viewable by everyone" ON public.follows FOR SELECT USING (true);
-CREATE POLICY "Users can follow/unfollow makers" ON public.follows FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can follow/unfollow makers" ON public.follows FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id AND target_maker <> auth.uid()::text);
+
+-- Do not let direct table updates rewrite server-owned fields.
+REVOKE UPDATE ON TABLE public.launches FROM authenticated;
+GRANT UPDATE (name, tag, type, url, repo, links, plats, tags, "desc", maker_name, maker_bio, maker_social, glyph, hue, icon_url, screenshots) ON TABLE public.launches TO authenticated;
+REVOKE UPDATE ON TABLE public.profiles FROM authenticated;
+GRANT UPDATE (name, bio, avatar_url, website, support_links) ON TABLE public.profiles TO authenticated;
 
 -- ==============================================================================
 -- STORAGE BUCKET CONFIGURATION (for launch icons and screenshots)
 -- ==============================================================================
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('brunch-media', 'brunch-media', true)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('brunch-media', 'brunch-media', true, 5242880, ARRAY['image/png', 'image/jpeg', 'image/webp'])
+ON CONFLICT (id) DO UPDATE
+SET public = EXCLUDED.public,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS "Media bucket is publicly viewable" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can upload to media bucket" ON storage.objects;
+DROP POLICY IF EXISTS "Users can update/delete their uploaded media" ON storage.objects;
+DROP POLICY IF EXISTS "Users can update their uploaded media" ON storage.objects;
 
 CREATE POLICY "Media bucket is publicly viewable"
 ON storage.objects FOR SELECT
@@ -258,11 +352,20 @@ USING (bucket_id = 'brunch-media');
 
 CREATE POLICY "Authenticated users can upload to media bucket"
 ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'brunch-media' AND auth.role() = 'authenticated');
+WITH CHECK (
+  bucket_id = 'brunch-media'
+  AND auth.role() = 'authenticated'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
 CREATE POLICY "Users can update/delete their uploaded media"
 ON storage.objects FOR DELETE
-USING (bucket_id = 'brunch-media' AND auth.uid() = owner);
+USING (bucket_id = 'brunch-media' AND auth.uid() = owner AND (storage.foldername(name))[1] = auth.uid()::text);
+
+CREATE POLICY "Users can update their uploaded media"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'brunch-media' AND auth.uid() = owner AND (storage.foldername(name))[1] = auth.uid()::text)
+WITH CHECK (bucket_id = 'brunch-media' AND (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ==============================================================================
 -- SEED DATA (Populating 5 Communities, 18 Launches, and 10 Posts)

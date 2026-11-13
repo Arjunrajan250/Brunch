@@ -7,10 +7,18 @@ import { Glyph, Icon } from '@/components/icons/Icons';
 import { MakerAvatar } from '@/components/common/LaunchComponents';
 import { SUP_WARN } from '@/components/creator/MakerView';
 import { SupportLink } from '@/types/brunch';
+import type { SheetType } from '@/context/BrunchContext';
+import { copyText } from '@/lib/clipboard';
 
 export function BrunchSheets() {
+  const { activeSheet } = useBrunch();
+  if (!activeSheet) return null;
+  const itemId = 'id' in activeSheet ? activeSheet.id : 'key' in activeSheet ? activeSheet.key : '';
+  return <BrunchSheet key={`${activeSheet.type}:${itemId}`} activeSheet={activeSheet} />;
+}
+
+function BrunchSheet({ activeSheet }: { activeSheet: NonNullable<SheetType> }) {
   const {
-    activeSheet,
     closeSheet,
     allLaunches,
     allPosts,
@@ -26,7 +34,6 @@ export function BrunchSheets() {
     go,
     toast,
     user,
-    userProfile,
     isBackendConnected,
     openAuthModal,
     signOut,
@@ -46,17 +53,26 @@ export function BrunchSheets() {
     return list;
   });
   const [editError, setEditError] = useState('');
-
-  if (!activeSheet) return null;
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const initial = (makerName || 'You').trim()[0]?.toUpperCase() || 'Y';
 
-  const handleSaveProfile = () => {
-    saveProfileSettings(profileName.trim() || 'You', makerBio, makerLink, supportLinks, !showSamplesCheck);
-    closeSheet();
+  const handleSaveProfile = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await saveProfileSettings(profileName.trim() || 'You', makerBio, makerLink, supportLinks, !showSamplesCheck);
+      if (saved) closeSheet();
+    } catch (error) {
+      toast(`Profile not saved: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSaveEditProfile = () => {
+  const handleSaveEditProfile = async () => {
+    if (saving) return;
     setEditError('');
     const cleanRows: SupportLink[] = [];
 
@@ -80,8 +96,59 @@ export function BrunchSheets() {
       }
     }
 
-    saveProfileSettings(profileName.trim() || 'You', profileBio.trim(), profileLink.trim(), cleanRows, hideSamples);
-    closeSheet();
+    const parsedLink = profileLink.trim() ? parseUrl(profileLink.trim()) : null;
+    if (parsedLink && !parsedLink.ok) {
+      setEditError(`Profile link: ${parsedLink.err || 'Invalid link'}`);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const saved = await saveProfileSettings(
+        profileName.trim() || 'You',
+        profileBio.trim(),
+        parsedLink?.ok ? parsedLink.href : '',
+        cleanRows,
+        hideSamples,
+      );
+      if (saved) closeSheet();
+    } catch (error) {
+      toast(`Profile not saved: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteLaunch = async (id: string) => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const deleted = await deleteLaunchItem(id);
+      if (deleted) {
+        closeSheet();
+        go({ t: 'saved', sub: 'mine' }, { replace: true });
+      }
+    } catch (error) {
+      toast(`Launch not deleted: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeletePost = async (id: string) => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const deleted = await deletePostItem(id);
+      if (deleted) {
+        closeSheet();
+        go({ t: 'tab', tab: 'community' }, { replace: true });
+      }
+    } catch (error) {
+      toast(`Post not deleted: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -209,8 +276,8 @@ export function BrunchSheets() {
               <button className="btn text" onClick={closeSheet}>
                 Cancel
               </button>
-              <button className="btn fill" onClick={handleSaveProfile}>
-                Save
+              <button className="btn fill" onClick={() => void handleSaveProfile()} disabled={saving} aria-busy={saving}>
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </>
@@ -310,8 +377,8 @@ export function BrunchSheets() {
               <button className="btn text" onClick={closeSheet}>
                 Cancel
               </button>
-              <button className="btn fill" onClick={handleSaveEditProfile}>
-                Save
+              <button className="btn fill" onClick={() => void handleSaveEditProfile()} disabled={saving} aria-busy={saving}>
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </>
@@ -352,11 +419,9 @@ export function BrunchSheets() {
                       <button
                         key={idx}
                         className="sup-i cursor-pointer"
-                        onClick={() => {
-                          if (navigator.clipboard) {
-                            navigator.clipboard.writeText(s.u);
-                            toast('UPI ID copied');
-                          }
+                        onClick={async () => {
+                          const copied = await copyText(s.u);
+                          toast(copied ? 'UPI ID copied' : 'Could not copy the UPI ID. Select it and copy it manually.');
                         }}
                       >
                         <span className={`si ${s.t}`}>
@@ -422,39 +487,10 @@ export function BrunchSheets() {
               </div>
             </div>
 
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto my-2">
-              <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center flex-none">
-                  <Icon name="up" size={16} />
-                </div>
-                <div className="text-xs">
-                  <span className="font-bold text-[var(--fg)]">Someone upvoted your launch</span>
-                  <p className="text-[var(--fg-2)] mt-0.5">Your project is trending in Top Charts</p>
-                  <span className="text-[10px] text-[var(--fg-2)] opacity-70">10m ago</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center flex-none">
-                  <Icon name="comment" size={16} />
-                </div>
-                <div className="text-xs">
-                  <span className="font-bold text-[var(--fg)]">New comment on your post</span>
-                  <p className="text-[var(--fg-2)] mt-0.5">Marcus L.: &quot;Really loved the clean mechanics!&quot;</p>
-                  <span className="text-[10px] text-[var(--fg-2)] opacity-70">2h ago</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center flex-none">
-                  <Icon name="heart" size={16} />
-                </div>
-                <div className="text-xs">
-                  <span className="font-bold text-[var(--fg)]">New follower</span>
-                  <p className="text-[var(--fg-2)] mt-0.5">Aiko T. started following your work</p>
-                  <span className="text-[10px] text-[var(--fg-2)] opacity-70">1d ago</span>
-                </div>
-              </div>
+            <div className="empty py-8">
+              <Icon name="bell" size={36} />
+              <b>No notifications yet</b>
+              <p>There is no new activity to show. Live notification delivery is not connected in this build.</p>
             </div>
 
             <div className="sh-row">
@@ -489,29 +525,22 @@ export function BrunchSheets() {
         {activeSheet.type === 'report' && (
           <>
             <h2>Report this item</h2>
-            <p>What is wrong with it?</p>
-            <nav className="menu">
-              {[
-                ['spam', 'Spam or misleading'],
-                ['notmine', 'Not made by the person who posted it'],
-                ['unsafe', 'Unsafe or harmful link'],
-                ['other', 'Something else'],
-              ].map(([k, t]) => (
-                <button
-                  key={k}
-                  onClick={() => {
-                    closeSheet();
-                    toast('Thanks. We will take a look.');
-                  }}
-                >
-                  <span>{t}</span>
-                  <Icon name="chev" size={18} />
-                </button>
-              ))}
-            </nav>
+            <p>Report delivery is not connected in this build. Copy the item’s permanent link so you can include it in a report to the site administrator.</p>
+            <p className="fine">No report has been submitted from this screen.</p>
             <div className="sh-row">
-              <button className="btn text" onClick={closeSheet}>
-                Cancel
+              <button className="btn text" onClick={closeSheet}>Cancel</button>
+              <button
+                className="btn fill"
+                onClick={async () => {
+                  const kind = allPosts.some((post) => post.id === activeSheet.id) ? 'post' : 'launch';
+                  const url = new URL(kind === 'post' ? `/post/${encodeURIComponent(activeSheet.id)}` : `/launch/${encodeURIComponent(activeSheet.id)}`, window.location.origin).href;
+                  const copied = await copyText(url);
+                  toast(copied ? 'Item link copied. No report was submitted.' : 'Could not copy the item link. Copy it from the address bar instead.');
+                  if (copied) closeSheet();
+                }}
+              >
+                <Icon name="copy" size={16} />
+                <span>Copy item link</span>
               </button>
             </div>
           </>
@@ -530,13 +559,11 @@ export function BrunchSheets() {
                 </button>
                 <button
                   className="btn fill bg-[var(--danger)] text-white hover:brightness-110"
-                  onClick={() => {
-                    deleteLaunchItem(activeSheet.id);
-                    closeSheet();
-                    go({ t: 'saved', sub: 'mine' });
-                  }}
+                  onClick={() => void handleDeleteLaunch(activeSheet.id)}
+                  disabled={deleting || !l}
+                  aria-busy={deleting}
                 >
-                  Delete
+                  {deleting ? 'Deleting…' : 'Delete'}
                 </button>
               </div>
             </>
@@ -556,13 +583,11 @@ export function BrunchSheets() {
                 </button>
                 <button
                   className="btn fill bg-[var(--danger)] text-white hover:brightness-110"
-                  onClick={() => {
-                    deletePostItem(activeSheet.id);
-                    closeSheet();
-                    go({ t: 'tab', tab: 'community' });
-                  }}
+                  onClick={() => void handleDeletePost(activeSheet.id)}
+                  disabled={deleting || !p}
+                  aria-busy={deleting}
                 >
-                  Delete
+                  {deleting ? 'Deleting…' : 'Delete'}
                 </button>
               </div>
             </>

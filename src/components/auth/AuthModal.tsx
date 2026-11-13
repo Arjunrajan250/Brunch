@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { Icon } from '@/components/icons/Icons';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { copyText } from '@/lib/clipboard';
 
 export function AuthModal() {
   const {
@@ -109,7 +110,7 @@ export function AuthModal() {
           className="absolute top-4 right-4 p-2 text-white/50 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
           aria-label="Close auth dialog"
         >
-          <Icon name="x" className="w-5 h-5" />
+          <Icon name="close" className="w-5 h-5" />
         </button>
 
         {/* Header */}
@@ -226,10 +227,15 @@ export function AuthModal() {
 
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const template = `NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co\nNEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key`;
-                        navigator.clipboard.writeText(template);
-                        toast('Copied .env template to clipboard');
+                        const copied = await copyText(template);
+                        if (copied) {
+                          setAuthError(null);
+                          toast('Copied .env template to clipboard');
+                        } else {
+                          setAuthError('Could not copy the .env template. Please copy it manually.');
+                        }
                       }}
                       className="mt-2 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors"
                     >

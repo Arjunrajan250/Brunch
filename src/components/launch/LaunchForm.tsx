@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import Image from 'next/image';
 import { useBrunch } from '@/context/BrunchContext';
 import { LaunchType, PlatformKey, Launch } from '@/types/brunch';
 import {
@@ -49,18 +50,17 @@ export function LaunchForm({ editId }: { editId?: string }) {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Auto-detect platforms based on URL
-  useEffect(() => {
-    if (!existing && url) {
-      const st = detectLink(url);
-      if (st && st.k) {
-        if (st.k === 'play' && !plats.includes('a')) setPlats((p) => [...p, 'a']);
-        if (st.k === 'appstore' && !plats.includes('i')) setPlats((p) => [...p, 'i']);
-        if ((st.k === 'steam' || st.k === 'msstore' || st.k === 'epic') && !plats.includes('d')) setPlats((p) => [...p, 'd']);
-      }
-    }
-  }, [url, existing, plats]);
+  const handleUrlChange = (value: string) => {
+    setUrl(value);
+    if (existing) return;
+    const platform = detectLink(value)?.k;
+    const detected: PlatformKey | undefined = platform === 'play' ? 'a'
+      : platform === 'appstore' || platform === 'testflight' ? 'i'
+        : platform === 'steam' || platform === 'msstore' || platform === 'epic' ? 'd' : undefined;
+    if (detected) setPlats((previous) => previous.includes(detected) ? previous : [...previous, detected]);
+  };
 
   const togglePlatform = (p: PlatformKey) => {
     setPlats((prev) =>
@@ -80,24 +80,29 @@ export function LaunchForm({ editId }: { editId?: string }) {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'icon' | 'shots') => {
-    const files = e.target.files;
-    if (!files || !files.length) return;
+    const input = e.currentTarget;
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
 
+    const available = kind === 'icon' ? 1 : Math.max(0, 3 - shots.length);
+    if (files.length > available) toast(`You can add ${available} more ${kind === 'icon' ? 'icon' : 'screenshot'}${available === 1 ? '' : 's'} here.`);
     setUploading(true);
-    for (const file of Array.from(files)) {
-      const res = await uploadMedia(file, kind === 'icon' ? 'icons' : 'shots');
-      if (res.url) {
-        if (kind === 'icon') {
-          setIcon(res.url);
-        } else {
-          setShots((prev) => (prev.length < 3 ? [...prev, res.url!] : prev));
+    try {
+      for (const file of files.slice(0, available)) {
+        const res = await uploadMedia(file, kind === 'icon' ? 'icons' : 'shots');
+        if (res.url) {
+          if (kind === 'icon') setIcon(res.url);
+          else setShots((prev) => (prev.length < 3 ? [...prev, res.url!] : prev));
+        } else if (res.error) {
+          toast(res.error);
         }
-      } else if (res.error) {
-        toast(res.error);
       }
+    } catch (error) {
+      toast(`Image upload failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setUploading(false);
+      input.value = '';
     }
-    setUploading(false);
-    e.target.value = '';
   };
 
   const validateStep0 = () => {
@@ -106,6 +111,8 @@ export function LaunchForm({ editId }: { editId?: string }) {
     if (tag.trim().length < 5) errs.tag = 'Add a one-line pitch (at least 5 characters)';
     const parsedUrl = parseUrl(url);
     if (!parsedUrl.ok) errs.url = parsedUrl.err || 'Invalid link';
+    if (extraLinks.some((link) => link.trim() && !parseUrl(link).ok)) errs.links = 'Every extra link must be a valid public web address';
+    if (extraLinks.filter((link) => link.trim()).length > 4) errs.links = 'Use at most four extra links';
     if (!plats.length) errs.plats = 'Pick at least one platform';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -114,6 +121,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
   const validateStep2 = () => {
     const errs: Record<string, string> = {};
     if (!maker.trim()) errs.maker = 'Add your name or team name';
+    if (social.trim() && !parseUrl(social).ok) errs.social = 'Add a valid public web address or leave this blank';
     if (!own) errs.own = 'Please confirm you made this';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -127,8 +135,9 @@ export function LaunchForm({ editId }: { editId?: string }) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (step !== 2 || submitting || uploading) return;
     if (!validateStep0()) {
       setStep(0);
       return;
@@ -138,31 +147,43 @@ export function LaunchForm({ editId }: { editId?: string }) {
       return;
     }
 
-    const cleanLinks = extraLinks.map((l) => l.trim()).filter((l) => parseUrl(l).ok);
+    const cleanLinks = extraLinks.flatMap((link) => {
+      if (!link.trim()) return [];
+      const parsed = parseUrl(link);
+      return parsed.ok ? [parsed.href] : [];
+    });
+    const repo = cleanLinks.find((link) => detectLink(link)?.k === 'github') || '';
+    const parsedSocial = social.trim() ? parseUrl(social) : null;
 
-    const launchId = saveLaunchItem(
-      {
-        name: name.trim(),
-        tag: tag.trim(),
-        type,
-        url: parseUrl(url).ok ? parseUrl(url).href : url,
-        links: cleanLinks,
-        repo: cleanLinks[0] || '',
-        plats,
-        tags,
-        desc: desc.trim(),
-        maker: maker.trim(),
-        social: social.trim(),
-        bio: bio.trim(),
-        glyph,
-        hue,
-        icon,
-        shots,
-      },
-      editId
-    );
-
-    go({ t: 'launch', id: launchId });
+    setSubmitting(true);
+    try {
+      const launchId = await saveLaunchItem(
+        {
+          name: name.trim(),
+          tag: tag.trim(),
+          type,
+          url: parseUrl(url).ok ? parseUrl(url).href : '',
+          links: cleanLinks,
+          repo,
+          plats,
+          tags,
+          desc: desc.trim(),
+          maker: maker.trim(),
+          social: parsedSocial?.ok ? parsedSocial.href : '',
+          bio: bio.trim(),
+          glyph,
+          hue,
+          icon,
+          shots,
+        },
+        editId
+      );
+      if (launchId) go({ t: 'launch', id: launchId }, { replace: true });
+    } catch (error) {
+      toast(`Launch not saved: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Preview launch object
@@ -180,7 +201,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
     icon,
     url,
     links: extraLinks.filter(Boolean),
-    ts: Date.now(),
+    ts: existing?.ts || 0,
   };
 
   return (
@@ -223,7 +244,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
         <div>
           <p className="fine mb-1.5">Live Preview</p>
           <div className="border border-[var(--line)] rounded-2xl p-3 bg-[var(--surface)]">
-            <LaunchRow launch={previewLaunch} />
+            <LaunchRow launch={previewLaunch} preview />
           </div>
         </div>
 
@@ -284,7 +305,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
                 id="f-url"
                 type="url"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => handleUrlChange(e.target.value)}
                 placeholder="https://tidepool.app or github.com/..."
                 aria-invalid={!!errors.url}
               />
@@ -318,6 +339,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
                   )}
                 </div>
               ))}
+              {errors.links && <span className="err" role="alert">{errors.links}</span>}
               {extraLinks.length < 4 && (
                 <button
                   type="button"
@@ -392,7 +414,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
                 <div className="thumbs flex gap-3 mb-2 flex-wrap">
                   {shots.map((s, i) => (
                     <div key={i} className="thumb relative w-24 h-16 rounded-xl overflow-hidden border border-[var(--line)]">
-                      <img src={s} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover" />
+                      <Image src={s} alt={`Screenshot ${i + 1}`} width={96} height={64} unoptimized className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => setShots((prev) => prev.filter((_, idx) => idx !== i))}
@@ -425,7 +447,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
             <div className="field">
               <span className="lbl">Icon & Theme Color</span>
               <div className="flex items-center gap-3 mb-3">
-                <label className="btn out sm cursor-pointer">
+                <label className={`btn out sm cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   <Icon name="image" size={16} />
                   <span>{icon ? 'Change image' : 'Upload image'}</span>
                   <input
@@ -433,6 +455,7 @@ export function LaunchForm({ editId }: { editId?: string }) {
                     accept="image/png,image/jpeg,image/webp"
                     className="hidden"
                     onChange={(e) => handleImageUpload(e, 'icon')}
+                    disabled={uploading}
                   />
                 </label>
                 {icon && (
@@ -514,7 +537,9 @@ export function LaunchForm({ editId }: { editId?: string }) {
                 value={social}
                 onChange={(e) => setSocial(e.target.value)}
                 placeholder="https://x.com/yourhandle or github.com/..."
+                aria-invalid={!!errors.social}
               />
+              {errors.social && <span className="err" role="alert">{errors.social}</span>}
             </div>
 
             {/* Ownership Confirmation */}
@@ -552,18 +577,25 @@ export function LaunchForm({ editId }: { editId?: string }) {
 
           {step < 2 ? (
             <button
+              key="next"
               type="button"
               className="btn fill"
-              onClick={handleNext}
+              onClick={(event) => {
+                event.preventDefault();
+                handleNext();
+              }}
             >
               Next step
             </button>
           ) : (
             <button
+              key="submit"
               type="submit"
               className="btn fill font-bold px-6"
+              disabled={uploading || submitting}
+              aria-busy={submitting}
             >
-              {editId ? 'Save changes' : 'Launch yours'}
+              {uploading ? 'Finish uploading first' : submitting ? 'Saving…' : editId ? 'Save changes' : 'Launch yours'}
             </button>
           )}
         </div>
