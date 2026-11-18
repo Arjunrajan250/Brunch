@@ -754,6 +754,7 @@ input[type=text]:focus,input[type=url]:focus,textarea:focus{outline:2px solid va
 /* messages: WhatsApp-style chats */
 :root{--wa-bg:#f2edd9;--wa-in:#ffffff;--wa-out:#fff0a3;--wa-sub:#6f6850}
 .page.chatpg{padding:0 0 calc(var(--nav) + var(--lift) + env(safe-area-inset-bottom,0px))}
+.page.chatpg .mchat{height:calc(100dvh - 64px - var(--nav) - var(--lift) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));min-height:280px;margin:0}
 .msgs{display:block;background:var(--surface)}
 .msgs.open .mlist{display:none}
 .msgs:not(.open) .mchat{display:none}
@@ -835,6 +836,7 @@ button.wa-who:hover{background:var(--surface-2)}
 }
 @media (min-width:840px){
   .page.chatpg{padding:14px var(--gr) 18px var(--gl)}
+  .page.chatpg .mchat{height:calc(100dvh - 96px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));min-height:440px;border:1px solid var(--line);border-radius:20px;overflow:hidden}
   .msgs{display:grid;grid-template-columns:clamp(320px,33%,400px) minmax(0,1fr);height:calc(100dvh - var(--hh,112px) - 34px);min-height:440px;border-radius:22px;overflow:hidden;box-shadow:0 1px 3px rgba(60,45,0,.08),0 10px 32px rgba(60,45,0,.07)}
   .msgs.open .mlist,.msgs:not(.open) .mchat{display:flex}
   .mlist{overflow-y:auto}
@@ -1102,6 +1104,7 @@ a.sup-i:hover,button.sup-i:hover{background:var(--surface-2)}
 @media (hover:none){.vote:hover,.chip:hover,.btn.out:hover,.btn.text:hover,.tile:hover,.searchbar:hover{filter:none}.vote:hover{background:var(--surface);border-color:var(--line)}.vote[aria-pressed="true"]:hover{background:var(--accent);border-color:var(--accent-line)}}
 @media (max-width:839px){
   .sbox{flex:none;max-width:none;margin-left:auto}
+  .hdr .signin-btn{display:none}
   .searchbar{width:40px;height:40px;padding:0;gap:0;border-radius:50%;justify-content:center;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
   .searchbar:hover{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line)}
   .searchbar .sl{display:none}
@@ -1127,6 +1130,10 @@ a.sup-i:hover,button.sup-i:hover{background:var(--surface-2)}
   .cw:hover .arrow{display:grid}
   .toast{bottom:28px!important}
   .page{padding-bottom:64px}
+}
+@media (min-width:840px) and (max-width:1199px){
+  .rail .rail-launch{width:48px;height:48px;padding:0;border-radius:50%;margin:4px 0 0}
+  .rail .rail-launch span{display:none}
 }
 @media (min-width:1100px){
   .d{grid-template-columns:minmax(0,1fr) 340px;gap:clamp(32px,4vw,64px)}

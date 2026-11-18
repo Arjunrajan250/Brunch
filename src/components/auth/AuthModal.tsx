@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { Icon } from '@/components/icons/Icons';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
@@ -26,6 +26,20 @@ export function AuthModal() {
   const [handle, setHandle] = useState('');
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeAuthModal();
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [authModalOpen, closeAuthModal]);
 
   if (!authModalOpen) return null;
 
@@ -101,7 +115,7 @@ export function AuthModal() {
       onClick={closeAuthModal}
     >
       <div
-        className="w-full max-w-md bg-[#13151b] border border-white/10 rounded-2xl p-6 shadow-2xl relative text-left"
+        className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain bg-[#13151b] border border-white/10 rounded-2xl p-6 shadow-2xl relative text-left"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -249,8 +263,9 @@ export function AuthModal() {
               /* Sign In Form */
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1.5">Email address</label>
+                  <label htmlFor="auth-email" className="block text-xs font-semibold text-white/70 mb-1.5">Email address</label>
                   <input
+                    id="auth-email"
                     type="email"
                     required
                     value={email}
@@ -260,8 +275,9 @@ export function AuthModal() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1.5">Password</label>
+                  <label htmlFor="auth-password" className="block text-xs font-semibold text-white/70 mb-1.5">Password</label>
                   <input
+                    id="auth-password"
                     type="password"
                     required
                     value={password}
@@ -307,8 +323,9 @@ export function AuthModal() {
               /* Sign Up Form */
               <form onSubmit={handleSignUp} className="space-y-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1">Your Name</label>
+                  <label htmlFor="auth-name" className="block text-xs font-semibold text-white/70 mb-1">Your Name</label>
                   <input
+                    id="auth-name"
                     type="text"
                     required
                     value={name}
@@ -318,8 +335,9 @@ export function AuthModal() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1">Username / Handle</label>
+                  <label htmlFor="auth-handle" className="block text-xs font-semibold text-white/70 mb-1">Username / Handle</label>
                   <input
+                    id="auth-handle"
                     type="text"
                     value={handle}
                     onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
@@ -328,8 +346,9 @@ export function AuthModal() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1">Email address</label>
+                  <label htmlFor="auth-email" className="block text-xs font-semibold text-white/70 mb-1">Email address</label>
                   <input
+                    id="auth-email"
                     type="email"
                     required
                     value={email}
@@ -339,8 +358,9 @@ export function AuthModal() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1">Password</label>
+                  <label htmlFor="auth-password" className="block text-xs font-semibold text-white/70 mb-1">Password</label>
                   <input
+                    id="auth-password"
                     type="password"
                     required
                     minLength={6}

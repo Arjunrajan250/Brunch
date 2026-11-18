@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBrunch } from '@/context/BrunchContext';
 import { SUP, getMakersList, fmtN, parseUrl } from '@/data/seed';
 import { Glyph, Icon } from '@/components/icons/Icons';
@@ -55,6 +55,19 @@ function BrunchSheet({ activeSheet }: { activeSheet: NonNullable<SheetType> }) {
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeSheet();
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeSheet]);
 
   const initial = (makerName || 'You').trim()[0]?.toUpperCase() || 'Y';
 

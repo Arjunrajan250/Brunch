@@ -162,7 +162,7 @@ export function Header() {
 
             {!user && (
               <button
-                className="btn ghost sm text-xs font-semibold text-[var(--fg-2)] hover:text-[var(--fg)]"
+                className="btn ghost sm signin-btn text-xs font-semibold text-[var(--fg-2)] hover:text-[var(--fg)]"
                 onClick={openAuthModal}
               >
                 Sign in

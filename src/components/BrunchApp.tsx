@@ -216,7 +216,7 @@ function AppContent() {
       <Rail />
       <div className="shell">
         <Header />
-        <main className="page" id="main" tabIndex={-1}>
+        <main className={`page ${currentRoute.t === 'chat' ? 'chatpg' : ''}`} id="main" tabIndex={-1}>
 
           {renderMain()}
         </main>

@@ -114,6 +114,19 @@ export function ShareModal({
     if (copyTimer.current) clearTimeout(copyTimer.current);
   }, []);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const shareUrl = new URL(routeToUrl({ t: 'launch', id: launch.id }), typeof window !== 'undefined' ? window.location.origin : 'https://brunch.so').href;
 
   const handleCopy = async () => {
@@ -228,6 +241,19 @@ export function CreateMenuSheet({
   onClose: () => void;
   onAction: (act: 'launch' | 'comm' | 'post') => void;
 }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
     <div className="scrim" onClick={onClose}>
       <div

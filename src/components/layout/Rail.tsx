@@ -75,8 +75,10 @@ export function Rail() {
 
       {/* Launch Yours Button */}
       <button
-        className="btn fill sm mx-2"
+        className="btn fill sm rail-launch mx-2"
         onClick={() => go({ t: 'submit' })}
+        aria-label="Launch yours"
+        title="Launch yours"
       >
         <Icon name="plus" size={16} />
         <span>Launch yours</span>
